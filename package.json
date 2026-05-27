@@ -1,0 +1,24 @@
+{
+  "name": "acoustic-crm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI Call-Center CRM for Uzbek call centers — multi-tenant SaaS with Kanban, telephony, and AI quality analysis",
+  "engines": {
+    "node": ">=18.18.0"
+  },
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "build": "pnpm -r --filter \"./apps/*\" --filter \"./packages/*\" run build",
+    "lint": "pnpm -r run lint",
+    "test": "pnpm -r run test",
+    "dev:backend": "pnpm --filter @acoustic-crm/backend dev",
+    "dev:frontend": "pnpm --filter @acoustic-crm/frontend dev",
+    "prisma:generate": "pnpm --filter @acoustic-crm/backend prisma:generate",
+    "prisma:migrate": "pnpm --filter @acoustic-crm/backend prisma:migrate",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down"
+  },
+  "devDependencies": {
+    "typescript": "5.4.5"
+  }
+}

@@ -1,0 +1,595 @@
+// Acoustic CRM — Prisma schema (multi-tenant, soft-delete).
+// Mirrors section 5.1 of CLAUDE.md. Every domain table carries tenantId and
+// participates in soft-delete via deletedAt. tenantId filtering is enforced
+// at the Prisma client layer (extension/middleware) — see backend M1.
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ====================== Enums ======================
+
+enum UserRole {
+  SUPER_ADMIN
+  TENANT_ADMIN
+  SUPERVISOR
+  OPERATOR
+  ANALYST
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  TRIAL
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+  INVITED
+}
+
+enum StageType {
+  NORMAL
+  WON
+  LOST
+}
+
+enum CardStatus {
+  OPEN
+  WON
+  LOST
+}
+
+enum TaskType {
+  CALL
+  MEETING
+  FOLLOWUP
+  CUSTOM
+}
+
+enum CallDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum CallStatus {
+  ANSWERED
+  MISSED
+  BUSY
+  FAILED
+}
+
+enum SmsStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  FAILED
+}
+
+enum LeadStatus {
+  UNSORTED
+  ACCEPTED
+  REJECTED
+}
+
+// ====================== Tenant ======================
+
+model Tenant {
+  id               String       @id @default(cuid())
+  name             String
+  status           TenantStatus @default(TRIAL)
+  defaultLanguage  String       @default("uz")
+  settings         Json         @default("{}")
+  freePbxConfig    Json         @default("{}")
+  smsConfig        Json         @default("{}")
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  deletedAt        DateTime?
+
+  users            User[]
+  branches         Branch[]
+  contacts         Contact[]
+  pipelines        Pipeline[]
+  stages           Stage[]
+  cards            Card[]
+  tags             Tag[]
+  tasks            Task[]
+  calls            Call[]
+  scripts          Script[]
+  smsTemplates    SmsTemplate[]
+  smsLogs          SmsLog[]
+  leads            Lead[]
+  triggers         Trigger[]
+  notes            Note[]
+  auditLogs        AuditLog[]
+
+  @@index([status])
+  @@map("tenants")
+}
+
+// ====================== User ======================
+
+model User {
+  id            String     @id @default(cuid())
+  tenantId      String
+  fullName      String
+  email         String
+  passwordHash  String
+  role          UserRole   @default(OPERATOR)
+  branchId      String?
+  status        UserStatus @default(ACTIVE)
+  isOnline      Boolean    @default(false)
+  lastSeenAt    DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  deletedAt     DateTime?
+
+  tenant            Tenant     @relation(fields: [tenantId], references: [id])
+  branch            Branch?    @relation(fields: [branchId], references: [id])
+  ownedContacts     Contact[]  @relation("ContactResponsible")
+  ownedCards        Card[]     @relation("CardResponsible")
+  assignedTasks     Task[]     @relation("TaskAssignee")
+  operatedCalls     Call[]     @relation("CallOperator")
+  authoredNotes     Note[]     @relation("NoteAuthor")
+  reviewedQaScores  QAScore[]  @relation("QAReviewer")
+  auditLogs         AuditLog[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId, role])
+  @@index([tenantId, branchId])
+  @@map("users")
+}
+
+// ====================== Branch ======================
+
+model Branch {
+  id        String    @id @default(cuid())
+  tenantId  String
+  name      String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  users  User[]
+  cards  Card[] @relation("CardBranch")
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("branches")
+}
+
+// ====================== Contact ======================
+
+model Contact {
+  id                 String    @id @default(cuid())
+  tenantId           String
+  fullName           String
+  phones             String[]
+  email              String?
+  source             String?
+  customFields       Json      @default("{}")
+  responsibleUserId  String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  deletedAt          DateTime?
+
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  responsible  User?    @relation("ContactResponsible", fields: [responsibleUserId], references: [id])
+  cards        Card[]
+  tasks        Task[]
+  calls        Call[]
+  smsLogs      SmsLog[]
+  notes        Note[]
+  leads        Lead[]
+
+  @@index([tenantId])
+  @@index([tenantId, email])
+  @@map("contacts")
+}
+
+// ====================== Pipeline ======================
+
+model Pipeline {
+  id        String    @id @default(cuid())
+  tenantId  String
+  name      String
+  isDefault Boolean   @default(false)
+  order     Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  stages   Stage[]
+  cards    Card[]
+  triggers Trigger[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("pipelines")
+}
+
+// ====================== Stage ======================
+
+model Stage {
+  id          String    @id @default(cuid())
+  tenantId    String
+  pipelineId  String
+  name        String
+  order       Int       @default(0)
+  color       String    @default("#94a3b8")
+  type        StageType @default(NORMAL)
+  autoActions Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  pipeline Pipeline @relation(fields: [pipelineId], references: [id])
+  cards    Card[]
+
+  @@index([tenantId])
+  @@index([pipelineId, order])
+  @@map("stages")
+}
+
+// ====================== Card (Kanban deal) ======================
+
+model Card {
+  id                String     @id @default(cuid())
+  tenantId          String
+  pipelineId        String
+  stageId           String
+  contactId         String
+  title             String
+  budget            Decimal?   @db.Decimal(14, 2)
+  responsibleUserId String?
+  branchId          String?
+  dueDate           DateTime?
+  enteredStageAt    DateTime   @default(now())
+  status            CardStatus @default(OPEN)
+  lostReason        String?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  deletedAt         DateTime?
+
+  tenant       Tenant    @relation(fields: [tenantId], references: [id])
+  pipeline     Pipeline  @relation(fields: [pipelineId], references: [id])
+  stage        Stage     @relation(fields: [stageId], references: [id])
+  contact      Contact   @relation(fields: [contactId], references: [id])
+  responsible  User?     @relation("CardResponsible", fields: [responsibleUserId], references: [id])
+  branch       Branch?   @relation("CardBranch", fields: [branchId], references: [id])
+  cardTags     CardTag[]
+  tasks        Task[]
+  calls        Call[]
+  smsLogs      SmsLog[]
+  notes        Note[]
+  leads        Lead[]
+
+  @@index([tenantId])
+  @@index([tenantId, pipelineId, stageId])
+  @@index([tenantId, responsibleUserId])
+  @@index([tenantId, status])
+  @@map("cards")
+}
+
+// ====================== Tag ======================
+
+model Tag {
+  id        String    @id @default(cuid())
+  tenantId  String
+  name      String
+  color     String    @default("#64748b")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  cardTags CardTag[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("tags")
+}
+
+// ====================== CardTag (many-to-many) ======================
+
+model CardTag {
+  cardId    String
+  tagId     String
+  createdAt DateTime @default(now())
+
+  card Card @relation(fields: [cardId], references: [id])
+  tag  Tag  @relation(fields: [tagId], references: [id])
+
+  @@id([cardId, tagId])
+  @@index([tagId])
+  @@map("card_tags")
+}
+
+// ====================== Task ======================
+
+model Task {
+  id          String    @id @default(cuid())
+  tenantId    String
+  cardId      String?
+  contactId   String?
+  assigneeId  String
+  type        TaskType  @default(CUSTOM)
+  text        String
+  dueAt       DateTime
+  completedAt DateTime?
+  result      String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  card     Card?    @relation(fields: [cardId], references: [id])
+  contact  Contact? @relation(fields: [contactId], references: [id])
+  assignee User     @relation("TaskAssignee", fields: [assigneeId], references: [id])
+
+  @@index([tenantId, assigneeId, completedAt])
+  @@index([tenantId, cardId])
+  @@map("tasks")
+}
+
+// ====================== Call ======================
+
+model Call {
+  id            String        @id @default(cuid())
+  tenantId      String
+  contactId     String?
+  cardId        String?
+  operatorId    String?
+  direction     CallDirection
+  fromNumber    String
+  toNumber      String
+  status        CallStatus
+  startedAt     DateTime
+  duration      Int           @default(0)
+  recordingUrl  String?
+  cdrUniqueId   String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  deletedAt     DateTime?
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id])
+  contact    Contact?    @relation(fields: [contactId], references: [id])
+  card       Card?       @relation(fields: [cardId], references: [id])
+  operator   User?       @relation("CallOperator", fields: [operatorId], references: [id])
+  transcript Transcript?
+  analysis   Analysis?
+  qaScores   QAScore[]
+
+  @@unique([tenantId, cdrUniqueId])
+  @@index([tenantId, startedAt])
+  @@index([tenantId, cardId])
+  @@index([tenantId, operatorId])
+  @@map("calls")
+}
+
+// ====================== Transcript ======================
+
+model Transcript {
+  id         String   @id @default(cuid())
+  callId     String   @unique
+  text       String
+  segments   Json     @default("[]")
+  language   String   @default("uz")
+  confidence Float    @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  call Call @relation(fields: [callId], references: [id])
+
+  @@map("transcripts")
+}
+
+// ====================== Analysis ======================
+
+model Analysis {
+  id        String   @id @default(cuid())
+  callId    String   @unique
+  sentiment String?
+  topic     String?
+  summary   String?
+  nextStep  String?
+  keyPoints Json     @default("[]")
+  scriptId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  call   Call    @relation(fields: [callId], references: [id])
+  script Script? @relation(fields: [scriptId], references: [id])
+
+  @@map("analyses")
+}
+
+// ====================== Script ======================
+
+model Script {
+  id        String    @id @default(cuid())
+  tenantId  String
+  name      String
+  sections  Json      @default("[]")
+  criteria  Json      @default("[]")
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tenant   Tenant     @relation(fields: [tenantId], references: [id])
+  analyses Analysis[]
+  qaScores QAScore[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("scripts")
+}
+
+// ====================== QAScore ======================
+
+model QAScore {
+  id                  String   @id @default(cuid())
+  callId              String
+  scriptId            String
+  totalScore          Float
+  maxScore            Float
+  criteriaResults     Json     @default("[]")
+  supervisorOverride  Json?
+  reviewedBy          String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  call     Call   @relation(fields: [callId], references: [id])
+  script   Script @relation(fields: [scriptId], references: [id])
+  reviewer User?  @relation("QAReviewer", fields: [reviewedBy], references: [id])
+
+  @@index([callId])
+  @@map("qa_scores")
+}
+
+// ====================== SmsTemplate ======================
+
+model SmsTemplate {
+  id        String    @id @default(cuid())
+  tenantId  String
+  name      String
+  body      String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tenant Tenant   @relation(fields: [tenantId], references: [id])
+  logs   SmsLog[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("sms_templates")
+}
+
+// ====================== SmsLog ======================
+
+model SmsLog {
+  id                 String     @id @default(cuid())
+  tenantId           String
+  contactId          String?
+  cardId             String?
+  templateId         String?
+  phone              String
+  text               String
+  provider           String
+  status             SmsStatus  @default(QUEUED)
+  providerMessageId  String?
+  sentAt             DateTime?
+  deliveredAt        DateTime?
+  errorMessage       String?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  tenant   Tenant       @relation(fields: [tenantId], references: [id])
+  contact  Contact?     @relation(fields: [contactId], references: [id])
+  card     Card?        @relation(fields: [cardId], references: [id])
+  template SmsTemplate? @relation(fields: [templateId], references: [id])
+
+  @@index([tenantId, status])
+  @@index([tenantId, phone])
+  @@map("sms_logs")
+}
+
+// ====================== Lead ======================
+
+model Lead {
+  id         String     @id @default(cuid())
+  tenantId   String
+  source     String
+  rawData    Json       @default("{}")
+  status     LeadStatus @default(UNSORTED)
+  contactId  String?
+  cardId     String?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  deletedAt  DateTime?
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id])
+  contact Contact? @relation(fields: [contactId], references: [id])
+  card    Card?    @relation(fields: [cardId], references: [id])
+
+  @@index([tenantId, status])
+  @@index([tenantId, source])
+  @@map("leads")
+}
+
+// ====================== Trigger ======================
+
+model Trigger {
+  id          String    @id @default(cuid())
+  tenantId    String
+  pipelineId  String?
+  name        String
+  event       Json
+  conditions  Json      @default("{}")
+  actions     Json      @default("[]")
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  pipeline Pipeline? @relation(fields: [pipelineId], references: [id])
+
+  @@index([tenantId, isActive])
+  @@map("triggers")
+}
+
+// ====================== Note ======================
+
+model Note {
+  id        String    @id @default(cuid())
+  tenantId  String
+  cardId    String?
+  contactId String?
+  authorId  String
+  text      String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id])
+  card    Card?    @relation(fields: [cardId], references: [id])
+  contact Contact? @relation(fields: [contactId], references: [id])
+  author  User     @relation("NoteAuthor", fields: [authorId], references: [id])
+
+  @@index([tenantId, cardId])
+  @@index([tenantId, contactId])
+  @@map("notes")
+}
+
+// ====================== AuditLog ======================
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  tenantId   String
+  userId     String?
+  action     String
+  entityType String
+  entityId   String
+  details    Json     @default("{}")
+  createdAt  DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, entityType, entityId])
+  @@map("audit_logs")
+}

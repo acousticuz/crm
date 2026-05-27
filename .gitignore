@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build artifacts
+dist/
+build/
+.next/
+*.tsbuildinfo
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+pnpm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# Audio / media (call recordings — never commit)
+*.wav
+*.mp3
+*.ogg
+recordings/
+
+# Coverage / cache
+coverage/
+.nyc_output/
+.cache/
+.turbo/
+
+# Prisma client output (generated)
+apps/backend/node_modules/.prisma/
+
+# Docker volumes (if mounted locally)
+.docker/data/
