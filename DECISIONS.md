@@ -137,7 +137,32 @@ Konteyner ichidagi portlar standart. Host portlari `.env` orqali boshqariladi.
 
 ---
 
-## §17. GIN index on `Contact.phones` deferred
+## §17. Webhook authentication via `Tenant.settings.webhookSecret`
+**Qaror:** Public lead intake URL: `POST /api/v1/leads/webhook/:tenantId/:source` + `X-Webhook-Secret` header. Secret tenant yaratilganda `crypto.randomBytes(24).toString("hex")` orqali generatsiya qilinadi va `Tenant.settings.webhookSecret` JSON ustunida saqlanadi. `getWebhookSecret(tenantId)` faqat ACTIVE tenantlar uchun ishlaydi.
+
+**Sabab:** Webhook ishonchli IP'lardan kelmasligini bilamiz (FB, IG, sayt). Tenant boshiga noyob sir — to'g'ridan-to'g'ri JWT'siz ishonchli. `Tenant.settings` JSON yangi migration talab qilmaydi, sxemaga moslashuvchi. Rotation M5/M11 da `POST /tenants/:id/regenerate-webhook` (tenant-admin) orqali ulanadi.
+
+---
+
+## §18. Default Pipeline seeded per tenant — M2
+**Qaror:** Har yangi tenant yaratilganda default `Sotuv` pipeline (5 stage: Yangi → Bog'lanildi → Taklif yuborildi → Yutdi (WON) → Yo'qotdi (LOST)) avtomatik seed qilinadi. Adminlar M3 da boshqarishi mumkin.
+
+**Sabab:** M2 ning lead-accept oqimi Card yaratish uchun pipeline+stage talab qiladi. Bo'sh tenant'da har bir lead-accept 400 berishi yomon UX. Default pipeline tenant onboarding'ni "shu yerda boshlang" tezligida qiladi. Asl AmoCRM ham xuddi shunday yondashadi.
+
+---
+
+## §19. Phone normalization rules
+**Qaror:** `normalizePhone(input)` ko'p formatda kiritilgan telefonlarni kanonik `+998901234567` shakliga keltiradi:
+- `+` bilan boshlansa, `+` saqlab, qolgan barcha non-digit'ni o'chiradi
+- `998` bilan boshlansa, `+` qo'shadi
+- 9 raqamli mahalliy raqam bo'lsa, `+998` prefiks
+- Boshqa hollarda raqamlarni qoldirib `+` qo'shadi
+
+**Sabab:** Dublikat tekshiruvi uchun bir xil raqamning turli ko'rinishlari (`+998 90 123 45 67` vs `998901234567`) bir xil hash bo'lishi shart. Strict E.164 emas — Uzbek tilida pragmatik. M2 testi 4 ta input variantni bir xil kanonik formatga keltirayotganini tasdiqlaydi.
+
+---
+
+## §20. GIN index on `Contact.phones` deferred
 **Qaror:** Prisma'da `String[]` ustun uchun GIN index sintaksisi preview-feature, M0 da `@@index([tenantId])` + `@@index([tenantId, email])` qoldirildi. Telefon bo'yicha tezkor qidiruv kerak bo'lsa (M2), GIN index'ni raw SQL migration orqali qo'shamiz.
 
 **Sabab:** Loyihaning birinchi migratsiyasini sodda saqlash; M2 da Contact dublikat aniqlash logikasiga kelganda haqiqiy index strategiyasi belgilanadi.

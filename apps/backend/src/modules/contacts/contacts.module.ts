@@ -1,5 +1,10 @@
 import { Module } from "@nestjs/common";
+import { ContactsService } from "./contacts.service";
+import { ContactsController } from "./contacts.controller";
 
-// Contacts module — implemented in M2.
-@Module({})
+@Module({
+  controllers: [ContactsController],
+  providers: [ContactsService],
+  exports: [ContactsService],
+})
 export class ContactsModule {}
