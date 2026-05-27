@@ -3,8 +3,8 @@
 ## Holat
 - Joriy milestone: **M0 — Poydevor**
 - Status: **done**
-- Oxirgi lokal commit: `8d4ed27` — feat(milestone-0)
-- Oxirgi push: **pending** (no git remote configured — see DECISIONS.md §3)
+- Oxirgi commit: `b84ef8b` — feat(milestone-0)
+- Oxirgi push: **b84ef8b → origin/main** (https://github.com/acousticuz/crm)
 
 ## Milestone'lar
 - [x] **M0** — Poydevor (monorepo, docker-compose, NestJS skeleton, Prisma schema + first migration, React+Vite+shadcn, health-check)
@@ -34,7 +34,7 @@
 - [x] Health-check: `GET /health` → HTTP 200 `{"status":"ok","service":"acoustic-crm-backend",...}` (Prisma ulanish tekshiruvi bilan)
 - [x] `pnpm build` ikkala app va shared paketda **xatosiz** o'tdi
 - [x] PROGRESS.md, DECISIONS.md, README.md yozildi
-- [ ] **Git commit + push** — lokal commit qilinadi; remote URL kelganda push qilamiz (DECISIONS.md §3)
+- [x] **Git commit + push** — `b84ef8b` push qilindi `origin/main` ga
 
 ## Tekshirilgan ish ko'rsatkichlari
 | Komponent | Holat |
@@ -64,5 +64,4 @@ Portlar `.env` orqali boshqariladi (`POSTGRES_HOST_PORT`, `REDIS_HOST_PORT`, ...
 **M1 — Auth + Multi-tenant + RBAC ni boshlash:** `apps/backend/src/modules/auth` va `tenants/users` modullarini to'liq qurish — JWT access+refresh (argon2 hash), Prisma client extension/middleware (har query'da `tenantId` filtri), 5 ta rol uchun guard, AuditLog interceptor, tenant izolyatsiya birlik testi. Boshlanish nuqtasi: `apps/backend/src/modules/auth/auth.module.ts` (hozir bo'sh stub).
 
 ## Ochiq savollar / bloklar
-1. **Git remote yo'q.** Lokal commit qilinadi; foydalanuvchidan remote URL (masalan, `git@github.com:org/acoustic-crm.git`) kelishi kerak. Olganimdan keyin `git remote add origin <url> && git push -u origin main` ishga tushaman. — DECISIONS.md §3 ga qarang.
-2. **Node.js 18.19.1** — NestJS 10 va Prisma 5 bilan ishlaydi, lekin 2026 yil oxirida EOL bo'ladi. Server uchun Node 20+ ga ko'tarilish tavsiya etiladi (M11 ga qadar). — DECISIONS.md §2 ga qarang.
+1. **Node.js 18.19.1** — NestJS 10 va Prisma 5 bilan ishlaydi, lekin 2026 yil oxirida EOL bo'ladi. Server uchun Node 20+ ga ko'tarilish tavsiya etiladi (M11 ga qadar). — DECISIONS.md §2 ga qarang.

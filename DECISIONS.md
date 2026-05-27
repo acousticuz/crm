@@ -24,10 +24,10 @@
 
 ---
 
-## §3. Git remote configured later
-**Qaror:** M0 da git remote o'rnatilmagan. Lokal commit qilinadi; foydalanuvchidan remote URL kelganda push qilinadi.
+## §3. Git remote — `acousticuz/crm` (GitHub)
+**Qaror:** Git remote `origin = https://github.com/acousticuz/crm.git`. `main` branch'i `origin/main`'ni kuzatadi. M0 commit (`b84ef8b`) push qilindi.
 
-**Sabab:** CLAUDE.md §8 ga ko'ra: "Repo yo'q bo'lsa: git init, .gitignore, birinchi commit. Remote yo'q bo'lsa DECISIONS.md ga yoz va M0 hisobotida remote URL so'ra." Foydalanuvchidan repo URL'ini so'rayman; olishim bilan `git remote add origin <url> && git push -u origin main` ishga tushaman.
+**Sabab:** CLAUDE.md §8 ga ko'ra remote URL foydalanuvchidan so'raldi va M0 hisobotida qabul qilindi.
 
 ---
 
