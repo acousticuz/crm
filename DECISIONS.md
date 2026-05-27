@@ -93,7 +93,51 @@ Konteyner ichidagi portlar standart. Host portlari `.env` orqali boshqariladi.
 
 ---
 
-## §11. GIN index on `Contact.phones` deferred
+## §11. Globally unique email (across tenants) — M1
+**Qaror:** Foydalanuvchi `email` butun tizim bo'ylab unique (schema `@@unique([tenantId, email])` saqlanadi, lekin application qatlamida global tekshiriladi). Login `{ email, password }` orqali — tenant slug yoki X-Tenant-Id headerisiz.
+
+**Sabab:** O'zbek call-markazlarida bir operator bir vaqtning o'zida ikki tenantda ishlash sodir emas. Email yagona qilish login UX'ini juda soddalashtiradi. Agar kelajakda zarur bo'lsa, `email+tenantSlug` ga o'tish mumkin (qaytmas o'zgarish emas).
+
+**Implementatsiya:** `UsersService.create()` va `TenantsService.createWithAdmin()` boshqa tenantlarda ham mavjudligini tekshiradi (base `prisma.user` orqali — extension chetlab o'tiladi).
+
+---
+
+## §12. Super-admin seed script in JavaScript (not TS)
+**Qaror:** `apps/backend/scripts/seed.js` — plain CommonJS. `prisma:seed` skript orqali ishga tushadi.
+
+**Sabab:** ts-node monorepo tsconfig'i bilan konflikt qildi (`moduleResolution must be set to NodeNext`). One-shot skript uchun TS qatlami chiqarib tashlandi — qiymat-narx nisbati past. Seed Prisma client va argon2 ni to'g'ridan-to'g'ri ishlatadi.
+
+---
+
+## §13. Default super-admin credentials — dev only
+**Qaror:** Seed default email `admin@acoustic.local`, parol `ChangeMe!2026`. `SUPERADMIN_EMAIL` va `SUPERADMIN_PASSWORD` env orqali override qilinadi.
+
+**Sabab:** Lokal dev'ni boshlash uchun bo'sh seed bo'lishi kerak. **Prod muhitda majburiy override**: deploy skriptida `SUPERADMIN_PASSWORD` set bo'lmasa, build to'xtaydi (M11 da implementatsiya). Hozircha PROGRESS.md ochiq savollarda eslatma bor.
+
+---
+
+## §14. JWT — two-secret access+refresh design
+**Qaror:** Access token `JWT_ACCESS_SECRET` bilan imzolanadi (15 min default), refresh token `JWT_REFRESH_SECRET` bilan (7 kun default). Refresh tokenlar payload'i `{ sub, tokenType: "refresh" }` — minimal.
+
+**Sabab:** Ikki sirning afzalliklari: agar access secret kompromiss bo'lsa, refresh tokenlar saqlanadi va inverse. Token rotation M11 da (refresh token DB jadvali bilan).
+
+---
+
+## §15. Prisma extension via `$allOperations`
+**Qaror:** Bir umumiy `$allOperations` hook orqali barcha tenant-scoped modellar uchun yagona kod yo'li. `findUnique` ga ham injectsion qiladi (Prisma 5 da bu unique-only emas qabul qilinadi). Service qatlami tenant-scoped lookups uchun `findFirst({ id, ... })` ishlatishi kerak — `findUnique({ id })` IDga ko'ra ishlasada, extension all-purpose; defense-in-depth uchun barchasini `findFirst` ga aylantirish maslahat.
+
+**Sabab:** Bitta umumiy hook 16 ta model uchun takror kodni qisqartiradi. `$allOperations` Prisma 5+ da rasmiy API. CardTag, Transcript, Analysis, QAScore — `tenantId` ustuni yo'q, lekin parent (Card/Call) orqali izolyatsiya. Ular uchun extension hech narsa qilmaydi; service qatlami parent'ni avval tekshiradi.
+
+---
+
+## §16. CLS — request context propagation
+**Qaror:** `nestjs-cls` (AsyncLocalStorage wrapper) per-so'rov kontekstni boshqaradi. JwtStrategy `validate()` ichida `writeContext()` chaqiriladi — bu Prisma extension uchun tenantId beradi.
+
+**Sabab:** Express middleware/guard zanjirida konteksni o'tkazish standart muammo. `nestjs-cls` zamonaviy, sinovdan o'tgan kutubxona. AsyncLocalStorage Node 18+ da barqaror. Test'da ham bevosita `cls.run(...)` orqali kontekst yaratish oson.
+
+---
+
+## §17. GIN index on `Contact.phones` deferred
 **Qaror:** Prisma'da `String[]` ustun uchun GIN index sintaksisi preview-feature, M0 da `@@index([tenantId])` + `@@index([tenantId, email])` qoldirildi. Telefon bo'yicha tezkor qidiruv kerak bo'lsa (M2), GIN index'ni raw SQL migration orqali qo'shamiz.
 
 **Sabab:** Loyihaning birinchi migratsiyasini sodda saqlash; M2 da Contact dublikat aniqlash logikasiga kelganda haqiqiy index strategiyasi belgilanadi.

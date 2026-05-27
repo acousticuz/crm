@@ -1,7 +1,9 @@
 import { Controller, Get, HttpCode, HttpStatus } from "@nestjs/common";
 import type { HealthCheckResponse } from "@acoustic-crm/shared";
+import { Public } from "../../common/decorators/public.decorator";
 import { PrismaService } from "../prisma/prisma.service";
 
+@Public()
 @Controller("health")
 export class HealthController {
   constructor(private readonly prisma: PrismaService) {}
