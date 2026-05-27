@@ -1,17 +1,87 @@
+import { useState, type FormEvent } from "react";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useAuth } from "@/lib/auth";
+
+interface LocationState {
+  from?: { pathname: string };
+}
 
 export function LoginPage(): JSX.Element {
+  const { isAuthenticated, login } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const from = (location.state as LocationState | null)?.from?.pathname ?? "/kanban";
+
+  if (isAuthenticated) {
+    return <Navigate to={from} replace />;
+  }
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    try {
+      await login(email, password);
+      navigate(from, { replace: true });
+    } catch (err) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } }).response?.data?.message ??
+        "Login xato";
+      setError(typeof msg === "string" ? msg : "Login xato");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <div className="w-full max-w-sm space-y-4 rounded-lg border bg-card p-6 shadow-sm">
-        <h1 className="text-xl font-semibold">Acoustic CRM</h1>
-        <p className="text-sm text-muted-foreground">
-          M1 da to'liq autentifikatsiya ulanadi.
-        </p>
-        <Button className="w-full" disabled>
-          Kirish (tez orada)
+      <form
+        onSubmit={onSubmit}
+        className="w-full max-w-sm space-y-4 rounded-lg border bg-card p-6 shadow-sm"
+      >
+        <div>
+          <h1 className="text-xl font-semibold">Acoustic CRM</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Kirish uchun ma'lumotlaringizni kiriting</p>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="email">Email</Label>
+          <Input
+            id="email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            autoComplete="email"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="password">Parol</Label>
+          <Input
+            id="password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            autoComplete="current-password"
+          />
+        </div>
+        {error && (
+          <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+        <Button type="submit" className="w-full" disabled={loading || !email || !password}>
+          {loading ? "Kirilmoqda..." : "Kirish"}
         </Button>
-      </div>
+      </form>
     </div>
   );
 }

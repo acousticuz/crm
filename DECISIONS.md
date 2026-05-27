@@ -162,7 +162,35 @@ Konteyner ichidagi portlar standart. Host portlari `.env` orqali boshqariladi.
 
 ---
 
-## §20. GIN index on `Contact.phones` deferred
-**Qaror:** Prisma'da `String[]` ustun uchun GIN index sintaksisi preview-feature, M0 da `@@index([tenantId])` + `@@index([tenantId, email])` qoldirildi. Telefon bo'yicha tezkor qidiruv kerak bo'lsa (M2), GIN index'ni raw SQL migration orqali qo'shamiz.
+## §20. Socket.io tenant-scoped rooms — M3
+**Qaror:** Har socket.io ulanish JWT handshake'dan keyin `tenant:{tenantId}` xonasiga qo'shiladi. Backend faqat `realtime.toTenant(tenantId, event, payload)` orqali emit qiladi — `server.to(room).emit(...)`. Cross-tenant leak yo'q.
 
-**Sabab:** Loyihaning birinchi migratsiyasini sodda saqlash; M2 da Contact dublikat aniqlash logikasiga kelganda haqiqiy index strategiyasi belgilanadi.
+**Sabab:** Multi-tenant izolyatsiya HTTP qatlamida Prisma extension orqali kuchaytirilgan; socket layer'da xuddi shu mantiqni room bilan amalga oshiramiz. Default room (barchaga emit) hech qachon ishlatilmaydi — kod konventsiyasi.
+
+---
+
+## §21. CardsModule explicit broadcasts (no Prisma hooks) — M3
+**Qaror:** Card create/update/move uchun `RealtimeService` qo'lda chaqiriladi. Prisma "after save" hook ishlatilmaydi.
+
+**Sabab:** Prisma hook'lar muvozanatlanmagan (tranzaksiya orqali ham issue qilishi mumkin va event'lar transaction commit'idan oldin chiqishi mumkin). Service qatlamida explicit `realtime.toTenant(...)` chaqiruvi audit-friendly va kuzatish oson.
+
+---
+
+## §22. dnd-kit + react-query — frontend stack uchun M3
+**Qaror:** Kanban DnD `@dnd-kit/core` (sortable kelajakda ustun ichi tartibga keladi); server holati `@tanstack/react-query` orqali boshqariladi (cache + invalidation). Lokal UI holati useState — Zustand'siz.
+
+**Sabab:** dnd-kit a11y va touch'ni sanoatda eng yaxshi qo'llab-quvvatlaydi. react-query CRM uchun ideal — server-state cache, retry, invalidation barcha qoshilgan. Zustand keraksiz qo'shimcha qatlam — react-query + useState yetadi.
+
+---
+
+## §23. JWT decoded in browser (no roundtrip on init) — M3
+**Qaror:** Frontend startup'da localStorage'dagi JWT'ni base64 decode qilib user payload'ni darhol oladi. `/auth/me` faqat login'da bir marta chaqiriladi (validatsiya uchun).
+
+**Sabab:** Page reload'da har safar /auth/me chaqirish ortiqcha latensiya. JWT signature tekshirilmaydi clientda — backend har request'da tekshiradi. localStorage muddati o'tgan tokenni saqlasa, birinchi API chaqiruvi 401 oladi va interceptor /login ga yo'naltiradi.
+
+---
+
+## §24. GIN index on `Contact.phones` deferred
+**Qaror:** Prisma'da `String[]` ustun uchun GIN index sintaksisi preview-feature, M0 da `@@index([tenantId])` + `@@index([tenantId, email])` qoldirildi. Telefon bo'yicha tezkor qidiruv kerak bo'lsa (M9 da), GIN index'ni raw SQL migration orqali qo'shamiz.
+
+**Sabab:** Loyihaning birinchi migratsiyasini sodda saqlash; M3 da kichik tenantlar uchun btree+hasSome yetarli. Million qator chegarasida qayta ko'rib chiqamiz.

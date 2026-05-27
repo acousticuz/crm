@@ -1,5 +1,10 @@
 import { Module } from "@nestjs/common";
+import { PipelinesService } from "./pipelines.service";
+import { PipelinesController } from "./pipelines.controller";
 
-// Pipelines + Stages module — implemented in M3.
-@Module({})
+@Module({
+  controllers: [PipelinesController],
+  providers: [PipelinesService],
+  exports: [PipelinesService],
+})
 export class PipelinesModule {}

@@ -11,6 +11,8 @@ import { HealthModule } from "./modules/health/health.module";
 import { PrismaModule } from "./modules/prisma/prisma.module";
 import { AuditModule } from "./modules/audit/audit.module";
 import { AuditInterceptor } from "./modules/audit/audit.interceptor";
+import { RealtimeModule } from "./modules/realtime/realtime.module";
+import { NotesModule } from "./modules/notes/notes.module";
 
 import { AuthModule } from "./modules/auth/auth.module";
 import { TenantsModule } from "./modules/tenants/tenants.module";
@@ -39,6 +41,7 @@ import { InboxModule } from "./modules/inbox/inbox.module";
     }),
     PrismaModule,
     AuditModule,
+    RealtimeModule,
     HealthModule,
     AuthModule,
     TenantsModule,
@@ -49,6 +52,7 @@ import { InboxModule } from "./modules/inbox/inbox.module";
     CardsModule,
     TagsModule,
     TasksModule,
+    NotesModule,
     CallsModule,
     SmsModule,
     TriggersModule,
