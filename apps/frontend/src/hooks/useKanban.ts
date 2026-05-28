@@ -153,6 +153,41 @@ export function useSendSms() {
   });
 }
 
+export function useOriginateCall() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { toNumber: string; cardId?: string; contactId?: string }) =>
+      (await api.post("/calls/originate", input)).data,
+    onSuccess: (_d, vars) => {
+      if (vars.cardId) qc.invalidateQueries({ queryKey: ["card", vars.cardId] });
+    },
+  });
+}
+
+/**
+ * Subscribes to inbound-call screen-pop events. The callback receives the
+ * tenant's call:incoming payload — typically used to surface a toast and
+ * (optionally) auto-open the matching card.
+ */
+export function useIncomingCallListener(handler: (payload: IncomingCallPayload) => void): void {
+  useEffect(() => {
+    const socket = getSocket();
+    socket.on("call:incoming", handler);
+    return () => {
+      socket.off("call:incoming", handler);
+    };
+  }, [handler]);
+}
+
+export interface IncomingCallPayload {
+  cdrUniqueId: string;
+  fromNumber: string;
+  toNumber: string;
+  operatorId: string | null;
+  contact: { id: string; fullName: string; phones: string[]; email: string | null } | null;
+  card: { id: string; title: string } | null;
+}
+
 /**
  * Subscribe to tenant Socket.io events and invalidate the card queries so
  * the board re-fetches when other operators move/create/update cards.

@@ -18,6 +18,7 @@ import {
   useCreateNote,
   useCreateTask,
   useDetachTag,
+  useOriginateCall,
   useSendSms,
   useSmsTemplates,
   useTags,
@@ -40,6 +41,7 @@ export function CardDetailSheet({ cardId, onClose }: Props): JSX.Element {
   const createNote = useCreateNote();
   const createTask = useCreateTask();
   const sendSms = useSendSms();
+  const originateCall = useOriginateCall();
 
   const [noteText, setNoteText] = useState("");
   const [taskText, setTaskText] = useState("");
@@ -70,9 +72,20 @@ export function CardDetailSheet({ cardId, onClose }: Props): JSX.Element {
             <section className="space-y-2">
               <h3 className="text-sm font-semibold">Aloqa</h3>
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" disabled title="M6 da ulanadi">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!card.contact.phones[0] || originateCall.isPending}
+                  onClick={() =>
+                    originateCall.mutate({
+                      toNumber: card.contact.phones[0],
+                      cardId: card.id,
+                      contactId: card.contact.id,
+                    })
+                  }
+                >
                   <Phone className="mr-1 h-4 w-4" />
-                  Qo'ng'iroq qilish
+                  {originateCall.isPending ? "Ulanmoqda..." : "Qo'ng'iroq qilish"}
                 </Button>
                 <Button
                   size="sm"
@@ -286,13 +299,18 @@ export function CardDetailSheet({ cardId, onClose }: Props): JSX.Element {
               <h3 className="text-sm font-semibold">Qo'ng'iroqlar tarixi (oxirgi 5)</h3>
               {card.calls.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
-                  Qo'ng'iroqlar M6 da ulanadi.
+                  Hozircha qo'ng'iroqlar yo'q. Yuqoridagi "Qo'ng'iroq qilish" tugmasini bosing.
                 </p>
               ) : (
                 <ul className="space-y-1 text-sm">
                   {card.calls.map((c) => (
-                    <li key={c.id}>
-                      {c.direction} · {c.status} · {format(new Date(c.startedAt), "dd MMM HH:mm")}
+                    <li key={c.id} className="rounded border bg-card px-2 py-1">
+                      <div className="flex items-center justify-between">
+                        <span>{c.direction === "INBOUND" ? "⬇" : "⬆"} {c.status}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {format(new Date(c.startedAt), "dd MMM HH:mm")} · {c.duration}s
+                        </span>
+                      </div>
                     </li>
                   ))}
                 </ul>

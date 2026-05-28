@@ -1,6 +1,7 @@
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { IncomingCallToast } from "@/components/IncomingCallToast";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 
@@ -51,6 +52,7 @@ export function AppLayout(): JSX.Element {
       <main className="container flex-1 py-6">
         <Outlet />
       </main>
+      <IncomingCallToast />
     </div>
   );
 }

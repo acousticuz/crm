@@ -1,0 +1,24 @@
+{
+  "name": "@acoustic-crm/telephony-worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "FreePBX/Asterisk AMI connector — translates AMI events into backend HTTP calls",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "dev": "ts-node src/main.ts",
+    "lint": "echo \"telephony-worker: no lint configured\"",
+    "test": "echo \"telephony-worker: covered by backend integration tests\""
+  },
+  "dependencies": {
+    "@acoustic-crm/shared": "workspace:*",
+    "axios": "1.7.7",
+    "express": "4.21.0"
+  },
+  "devDependencies": {
+    "@types/express": "4.17.21",
+    "@types/node": "20.16.10",
+    "ts-node": "10.9.2",
+    "typescript": "5.4.5"
+  }
+}

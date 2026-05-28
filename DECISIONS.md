@@ -229,3 +229,42 @@ Konteyner ichidagi portlar standart. Host portlari `.env` orqali boshqariladi.
 **Qaror:** Prisma'da `String[]` ustun uchun GIN index sintaksisi preview-feature, M0 da `@@index([tenantId])` + `@@index([tenantId, email])` qoldirildi. Telefon bo'yicha tezkor qidiruv kerak bo'lsa (M9 da), GIN index'ni raw SQL migration orqali qo'shamiz.
 
 **Sabab:** Loyihaning birinchi migratsiyasini sodda saqlash; M3 da kichik tenantlar uchun btree+hasSome yetarli. Million qator chegarasida qayta ko'rib chiqamiz.
+
+---
+
+## §30. Telephony-worker — alohida ish jarayoni + interface — M6
+**Qaror:** AMI integratsiyasi alohida workspace paketi `apps/telephony-worker`. Backend bilan ikki yo'nalishli HTTP orqali aloqada bo'ladi:
+- Backend → Worker: `POST /worker/originate` (click-to-call)
+- Worker → Backend: `POST /api/v1/internal/calls/{incoming,completed}`
+
+Ikkala yo'nalish ham `X-Worker-Secret` (shared `TELEPHONY_WORKER_SECRET` env) bilan autentifikatsiyalanadi. `AmiClient` interfeysi 2 implementatsiya: `MockAmiClient` (dev/test) va `AsteriskAmiClient` skeleton (prod uchun M11 da to'ldiriladi).
+
+**Sabab:** Asterisk AMI ulanish doimiy TCP socket — uni NestJS HTTP server bilan birlashtirib qo'yish (a) lifecycle riski oshiradi, (b) reconnect logika monolit'ni murakkablashtiradi, (c) PBX yaqinida bo'lishi mumkin (geografik). Alohida worker — boshqa kuzatuv, deploy va xato izolyatsiyasi. Interface-first design bilan mock va prod kodi bir xil pipeline'dan o'tadi — testlar real-world bilan paralel.
+
+---
+
+## §31. Calls upsert by (tenantId, cdrUniqueId) — idempotent worker — M6
+**Qaror:** `CallsService.completed` `prisma.t.call.upsert` ishlatadi `@@unique([tenantId, cdrUniqueId])` constraint orqali. Worker xato bo'lib qaytib yuborsa (HTTP retry, qayta ulanish), dublikat yozuv chiqmaydi.
+
+**Sabab:** AMI hangup eventi telefoniya tomonidan retry bo'lishi mumkin (worker reconnect, queued requests). Idempotency cdrUniqueId orqali tabiiy — Asterisk har bir kanalga noyob id beradi. Status/duration update qiladi (oxirgi ma'lumot to'g'ri).
+
+---
+
+## §32. MISSED → callback Task auto-create — M6
+**Qaror:** Inbound MISSED bo'lsa, `Task` yaratiladi: `type=CALL`, `dueAt = now + 1h`, `assigneeId = operator || responsible || firstAdmin`. Text "qayta qo'ng'iroq qiling" prefiksi bilan.
+
+**Sabab:** Mijoz raqami bilan callback qilish — call-markazning eng yuqori konvertatsiya signali. Avtomatik task call-markaz menejerlariga ko'rsatadi: "bu mijoz javob olmadi — bugun zarur". CLAUDE.md §5.4 da aniq belgilangan. 1 soatlik dueAt — mijoz hali "issiq" bo'lganda.
+
+---
+
+## §33. Real Asterisk integration deferred to M11
+**Qaror:** `AsteriskAmiClient` interfaceni implement qiladi, lekin `connect()` chaqiruvi xato beradi ("not implemented in M6 skeleton"). Real AMI ulanish M11 deploy-hardeningda `asterisk-manager` npm paketi bilan qo'shiladi.
+
+**Sabab:** M6 talabini "agar real PBX mavjud bo'lmasa, mock simulator drive qiladi, lekin interfeys real ulanishga tayyor" deb yopdi. Customer PBX'lari turlicha (FreePBX/Asterisk versiyalari, contexts, trunks). Real implementatsiya CRM'ni mijoz yaqiniga deploy qilish vaqtida tenant-config bilan birga sozlanadi.
+
+---
+
+## §34. Frontend screen-pop — fixed toast + deep-link — M6
+**Qaror:** Inbound qo'ng'iroq kelganda `IncomingCallToast` (fixed-position, bottom-right) ko'rinadi. Kontakt nomi, telefon, mos karta + "Kartani ochish" tugmasi. 30 sekundda auto-dismiss. `AppLayout` ichida har sahifada mount.
+
+**Sabab:** Modal overlay operator ishini to'sib qo'yadi — toast esa fonda ish davom etadi. Modal real screen-pop M11 da brauzer notification API + sound bilan qo'shilishi mumkin. "Kartani ochish" hozir tegishli Kanban sahifaga deep-link qiladi (M9 da to'liq routing).
