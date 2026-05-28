@@ -18,7 +18,7 @@ describe("M8 — AI analysis + QA (mock LLM, stable evidence-backed scoring)", (
   let prisma: PrismaService;
   let cls: ClsService;
   let qa: QaService;
-  let transcripts: TranscriptsService;
+  let _transcripts: TranscriptsService;
 
   let tenantId: string;
   let userId: string;
@@ -47,7 +47,7 @@ describe("M8 — AI analysis + QA (mock LLM, stable evidence-backed scoring)", (
     cls = moduleRef.get(ClsService);
     prisma = moduleRef.get(PrismaService);
     qa = moduleRef.get(QaService);
-    transcripts = moduleRef.get(TranscriptsService);
+    _transcripts = moduleRef.get(TranscriptsService);
     await prisma.$connect();
 
     const t = await prisma.tenant.create({

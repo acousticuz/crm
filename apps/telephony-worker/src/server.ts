@@ -55,7 +55,6 @@ export function startWorkerServer(opts: ServerOpts): () => void {
   });
 
   const server = app.listen(opts.port, () => {
-    // eslint-disable-next-line no-console
     console.log(`telephony-worker listening on :${opts.port} (ami=${opts.ami.name})`);
   });
 

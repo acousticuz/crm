@@ -7,7 +7,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
     "dev": "ts-node src/main.ts",
-    "lint": "echo \"ai-worker: no lint configured\"",
+    "lint": "eslint src",
     "test": "echo \"ai-worker: covered by backend integration tests\""
   },
   "dependencies": {

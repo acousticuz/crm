@@ -42,7 +42,7 @@ export class IntegrationsService {
   // ===== Public (masked) reads =====
 
   async list() {
-    const tenantId = this.currentTenantId();
+    this.currentTenantId();
     const rows = await this.prisma.t.integration.findMany({
       where: { deletedAt: null },
       orderBy: { type: "asc" },

@@ -27,7 +27,6 @@ export class Coordinator {
           startedAt: evt.startedAt,
         });
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.error(`reportStarted failed: ${(err as Error).message}`);
       }
     });
@@ -42,7 +41,6 @@ export class Coordinator {
           operatorId: evt.operatorId,
         });
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.error(`reportIncoming failed: ${(err as Error).message}`);
       }
     });
@@ -62,7 +60,6 @@ export class Coordinator {
           recordingUrl: evt.recordingUrl,
         });
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.error(`reportCompleted failed: ${(err as Error).message}`);
       }
     });

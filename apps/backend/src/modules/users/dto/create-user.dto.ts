@@ -3,12 +3,11 @@ import { UserRole } from "@acoustic-crm/shared";
 
 // Tenant-admin can grant any role EXCEPT SUPER_ADMIN.
 // Roles enforced again in the service layer.
-const ASSIGNABLE_ROLES = [
-  UserRole.TENANT_ADMIN,
-  UserRole.SUPERVISOR,
-  UserRole.OPERATOR,
-  UserRole.ANALYST,
-] as const;
+type AssignableRole =
+  | UserRole.TENANT_ADMIN
+  | UserRole.SUPERVISOR
+  | UserRole.OPERATOR
+  | UserRole.ANALYST;
 
 export class CreateUserDto {
   @IsString()
@@ -24,7 +23,7 @@ export class CreateUserDto {
   password!: string;
 
   @IsEnum(UserRole)
-  role!: (typeof ASSIGNABLE_ROLES)[number];
+  role!: AssignableRole;
 
   @IsOptional()
   @IsString()

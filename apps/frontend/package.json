@@ -7,7 +7,7 @@
     "build": "tsc -b && vite build",
     "dev": "vite",
     "preview": "vite preview",
-    "lint": "eslint . --ext ts,tsx",
+    "lint": "eslint src",
     "test": "echo \"frontend: no tests yet in M0\""
   },
   "dependencies": {

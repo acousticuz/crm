@@ -10,6 +10,7 @@
 - [x] **M0–M11** — to'liq CRM
 - [x] **Settings + Integrations** — sozlamalar + integratsiyalar (AES-256-GCM)
 - [x] **Call-fixes** — qo'ng'iroq jurnali + noma'lum raqam + sozlanadigan Kanban
+- [x] **Lint** — barcha workspace'larda real ESLint (flat `eslint.config.mjs`, typescript-eslint). `pnpm lint` 0 xato/0 ogohlantirish bilan o'tadi.
 
 ## Call-fixes moduli (CALL_FIXES_MODULE.md) — WebRTC YO'Q
 ### 1. Har bir qo'ng'iroq saqlanadi (MISSED/BUSY/FAILED ham)

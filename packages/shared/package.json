@@ -12,7 +12,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "lint": "echo \"shared: no lint configured\"",
+    "lint": "eslint src",
     "test": "echo \"shared: no tests yet\""
   },
   "devDependencies": {

@@ -7,7 +7,7 @@
     "build": "pnpm --filter @acoustic-crm/shared build && nest build",
     "dev": "nest start --watch",
     "start": "node dist/main.js",
-    "lint": "eslint \"src/**/*.ts\"",
+    "lint": "eslint src test",
     "test": "jest --runInBand --passWithNoTests",
     "test:watch": "jest --watch",
     "prisma:seed": "node scripts/seed.js",

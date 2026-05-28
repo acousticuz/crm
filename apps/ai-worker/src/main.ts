@@ -77,23 +77,19 @@ async function main(): Promise<void> {
 
   for (const [name, w] of [["stt", sttWorker], ["analysis", analysisWorker], ["qa", qaWorker]] as const) {
     w.on("completed", (job) => {
-      // eslint-disable-next-line no-console
       console.log(`${name} job ${job.id} done`);
     });
     w.on("failed", (job, err) => {
-      // eslint-disable-next-line no-console
       console.error(`${name} job ${job?.id} failed: ${err.message}`);
     });
   }
 
-  // eslint-disable-next-line no-console
   console.log(
     `ai-worker listening on queues ${QUEUES.STT}, ${QUEUES.AI_ANALYSIS}, ${QUEUES.QA} (stt=${stt.name}, llm=${llm.name})`,
   );
 }
 
 main().catch((err) => {
-  // eslint-disable-next-line no-console
   console.error("ai-worker failed to start:", err);
   process.exit(1);
 });

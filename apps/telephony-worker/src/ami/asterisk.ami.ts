@@ -1,4 +1,3 @@
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const AsteriskManager = require("asterisk-manager") as unknown as new (
   port: number,
   host: string,
@@ -119,18 +118,15 @@ export class AsteriskAmiClient implements AmiClient {
       }, 10_000);
       this.ami!.on("connect", () => {
         clearTimeout(timeout);
-        // eslint-disable-next-line no-console
         console.log(`Asterisk AMI connected at ${this.config.host}:${this.config.port}`);
         resolve();
       });
       this.ami!.on("error", (err) => {
         clearTimeout(timeout);
-        // eslint-disable-next-line no-console
         console.error("AMI error:", err.message);
         reject(err);
       });
       this.ami!.on("close", () => {
-        // eslint-disable-next-line no-console
         console.warn("AMI connection closed (keepConnected will retry)");
       });
       this.ami!.on("managerevent", (evt) => {

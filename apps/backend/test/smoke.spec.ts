@@ -50,7 +50,7 @@ describe("M11 — Full pipeline smoke test", () => {
   let qa: QaService;
   let triggers: TriggersService;
   let cards: CardsService;
-  let sms: SmsService;
+  let _sms: SmsService;
   let mockSms: MockSmsAdapter;
 
   let tenantId: string;
@@ -100,7 +100,7 @@ describe("M11 — Full pipeline smoke test", () => {
     qa = moduleRef.get(QaService);
     triggers = moduleRef.get(TriggersService);
     cards = moduleRef.get(CardsService);
-    sms = moduleRef.get(SmsService);
+    _sms = moduleRef.get(SmsService);
     mockSms = moduleRef.get(MockSmsAdapter);
     await prisma.$connect();
 

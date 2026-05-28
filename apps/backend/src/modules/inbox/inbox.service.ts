@@ -12,7 +12,7 @@ import { readContext } from "../../common/tenant-context";
 import { normalizePhone } from "../../common/phone";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
-import { detectSensitiveCategories, type SensitiveCategory } from "./sensitivity";
+import { detectSensitiveCategories } from "./sensitivity";
 import {
   ApproveDraftDto,
   InboxWebhookDto,
