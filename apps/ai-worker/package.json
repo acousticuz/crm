@@ -1,0 +1,24 @@
+{
+  "name": "@acoustic-crm/ai-worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "STT + LLM analysis worker — BullMQ consumer translating call audio into transcripts and downstream AI insights",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "dev": "ts-node src/main.ts",
+    "lint": "echo \"ai-worker: no lint configured\"",
+    "test": "echo \"ai-worker: covered by backend integration tests\""
+  },
+  "dependencies": {
+    "@acoustic-crm/shared": "workspace:*",
+    "axios": "1.7.7",
+    "bullmq": "5.21.2",
+    "ioredis": "5.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "20.16.10",
+    "ts-node": "10.9.2",
+    "typescript": "5.4.5"
+  }
+}

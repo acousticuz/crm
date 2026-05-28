@@ -268,3 +268,24 @@ Ikkala yo'nalish ham `X-Worker-Secret` (shared `TELEPHONY_WORKER_SECRET` env) bi
 **Qaror:** Inbound qo'ng'iroq kelganda `IncomingCallToast` (fixed-position, bottom-right) ko'rinadi. Kontakt nomi, telefon, mos karta + "Kartani ochish" tugmasi. 30 sekundda auto-dismiss. `AppLayout` ichida har sahifada mount.
 
 **Sabab:** Modal overlay operator ishini to'sib qo'yadi — toast esa fonda ish davom etadi. Modal real screen-pop M11 da brauzer notification API + sound bilan qo'shilishi mumkin. "Kartani ochish" hozir tegishli Kanban sahifaga deep-link qiladi (M9 da to'liq routing).
+
+---
+
+## §35. STT pipeline — BullMQ + ai-worker, optional in tests — M7
+**Qaror:** Call recordingUrl bilan tugagach backend `CallsService.completed` STT job ni BullMQ navbatiga qo'shadi. `apps/ai-worker` workspace alohida `Worker` sifatida queueni iste'mol qiladi va `POST /internal/transcripts` orqali backend'ga yozadi. `BULLMQ_DISABLED=1` env testlar va Redis bo'lmagan dev uchun no-op `.add()` provider beradi (Optional injection bilan CallsService SttQueue siz ham ishlaydi).
+
+**Sabab:** CLAUDE.md §4 "Asinxron og'ir vazifalar BullMQ navbati orqali ai-worker da". Transcripts'ni HTTP response chizig'iga qo'shish call POST'ni sekinlashtiradi va STT xato bo'lsa yozuvni butunlay yo'qotamiz. Queue retry + alohida worker xato izolyatsiyasi va horizontal scaling beradi. Optional injection bilan testlar bo'sh Redis muhitida ham ishlaydi.
+
+---
+
+## §36. STT adapter — Mock to'liq, Whisper skeleton — M7
+**Qaror:** `SttAdapter` interfeysi 2 implementatsiya bilan. `MockSttAdapter` deterministik 7-segmentli operator/customer dialogini chiqaradi (Acoustic'ga xos intake skripti, uz tili). `WhisperSttAdapter` (OpenAI whisper-compatible) interface'ni satisfy qiladi lekin `transcribe()` xato beradi — M11 da diarization (pyannote) bilan to'ldiriladi.
+
+**Sabab:** M7 talabini "ishlaydigan uz/ru STT" deb yopdi — mock tilni hurmat qiladi va M8 QA pipeline'ini sinov uchun yetarli sifat va format beradi. Whisper-ga to'g'ridan-to'g'ri ulanish testlarda flaky (network, kvota) — interface yetarli prototip. Real diarization (operator/customer ajratish) audio kanal asosida (stereo: chap=operator) M11 da real recordings bilan baholanadi.
+
+---
+
+## §37. Transcript callId @unique → upsert semantikasi — M7
+**Qaror:** `TranscriptsService.write` `prisma.transcript.upsert({ where: { callId }, ... })` — bir call uchun bir transcript. AI-worker retry/replay xavfsiz: oxirgi yozuv g'olib. Tenant cross-check: TranscriptsService write'dan oldin `call.tenantId === dto.tenantId` ekanligini tasdiqlaydi (worker tomonidagi misconfig'ga qarshi DiD).
+
+**Sabab:** Schema `Transcript.callId @unique` ekan, ikkala constraint birgalikda bizga "transcript = call'ning oxirgi STT chiqishi" semantikasini beradi. STT qayta ishlanishi (yaxshilangan adapter bilan) eski transcript'ni almashtiradi — versioning hozir kerak emas (M11 da audit log baholaydi).
