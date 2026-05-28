@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import {
   useCreateUser,
   useDeleteUser,
@@ -186,7 +187,6 @@ export function UsersManager(): JSX.Element {
             <Field label="PJSIP extension (masalan 2000)">
               <div className="flex gap-2">
                 <Input
-                  list="pbx-ext-options"
                   inputMode="numeric"
                   placeholder="2000"
                   value={form.extension}
@@ -200,18 +200,33 @@ export function UsersManager(): JSX.Element {
                   disabled={pbxExt.isPending}
                   title="FreePBX'dan extensionlarni yuklash"
                 >
-                  {pbxExt.isPending ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    "FreePBX'dan"
-                  )}
+                  {pbxExt.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "FreePBX'dan"}
                 </Button>
               </div>
-              <datalist id="pbx-ext-options">
-                {extOptions.map((ext) => (
-                  <option key={ext} value={ext} />
-                ))}
-              </datalist>
+              {extOptions.length > 0 && (
+                <div className="mt-1.5 space-y-1">
+                  <p className="text-[11px] text-muted-foreground">
+                    {extOptions.length} ta topildi — tanlang:
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {extOptions.map((ext) => (
+                      <button
+                        key={ext}
+                        type="button"
+                        onClick={() => set("extension", ext)}
+                        className={cn(
+                          "rounded-md border px-2 py-0.5 text-xs",
+                          form.extension === ext
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-input hover:bg-accent",
+                        )}
+                      >
+                        {ext}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </Field>
             <Field label="Filial ID (ixtiyoriy)">
               <Input value={form.branchId} onChange={(e) => set("branchId", e.target.value)} />
