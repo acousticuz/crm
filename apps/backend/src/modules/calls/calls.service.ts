@@ -48,13 +48,20 @@ export class CallsService {
    * analysis + QA pipeline runs. The mock STT adapter ignores the recording
    * URL; the Whisper adapter needs a reachable audio file.
    */
-  private async enqueueTranscription(callId: string, tenantId: string, recordingUrl: string) {
+  private async enqueueTranscription(
+    callId: string,
+    tenantId: string,
+    cdrUniqueId: string,
+    recordingUrl: string,
+  ) {
     if (!this.sttQueue) return;
     try {
       await this.sttQueue.add(
         "stt",
-        { callId, tenantId, recordingUrl, language: "uz" },
-        { attempts: 3, removeOnComplete: 100, removeOnFail: 50 },
+        { callId, tenantId, cdrUniqueId, recordingUrl: recordingUrl || undefined, language: "uz" },
+        // Delay so the PBX has finished writing the recording file (MixMonitor
+        // finalizes it a moment after hangup) before ai-worker reads it.
+        { delay: 10_000, attempts: 3, removeOnComplete: 100, removeOnFail: 50 },
       );
     } catch (err) {
       this.logger.warn(`Enqueue STT failed for call ${callId}: ${(err as Error).message}`);
@@ -333,6 +340,7 @@ export class CallsService {
       await this.enqueueTranscription(
         call.id,
         dto.tenantId,
+        dto.cdrUniqueId,
         dto.recordingUrl ?? call.recordingUrl ?? "",
       );
     }
