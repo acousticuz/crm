@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { ClsModule } from "nestjs-cls";
+import { EventEmitterModule } from "@nestjs/event-emitter";
 
 import { HttpExceptionFilter } from "./common/filters/http-exception.filter";
 import { JwtAuthGuard } from "./common/guards/jwt-auth.guard";
@@ -39,6 +40,7 @@ import { InboxModule } from "./modules/inbox/inbox.module";
       global: true,
       middleware: { mount: true, generateId: true },
     }),
+    EventEmitterModule.forRoot({ wildcard: true }),
     PrismaModule,
     AuditModule,
     RealtimeModule,

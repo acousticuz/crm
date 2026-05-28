@@ -6,11 +6,13 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { ClsService } from "nestjs-cls";
+import { EventEmitter2 } from "@nestjs/event-emitter";
 import { StageType, SOCKET_EVENTS } from "@acoustic-crm/shared";
 import { readContext } from "../../common/tenant-context";
 import { normalizePhone } from "../../common/phone";
 import { PrismaService } from "../prisma/prisma.service";
 import { RealtimeService } from "../realtime/realtime.service";
+import { EVT, type CardCreatedEvent, type CardMovedEvent } from "../triggers/events";
 import { CreateCardDto, FindCardsDto, MoveCardDto, UpdateCardDto } from "./dto/card.dto";
 
 const DEFAULT_PAGE_SIZE = 50;
@@ -21,6 +23,7 @@ export class CardsService {
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
     private readonly cls: ClsService,
+    private readonly events: EventEmitter2,
   ) {}
 
   private currentTenantId(): string {
@@ -73,6 +76,16 @@ export class CardsService {
       },
     });
     this.realtime.toTenant(tenantId, SOCKET_EVENTS.CARD_CREATED, { card });
+    const evt: CardCreatedEvent = {
+      tenantId,
+      at: new Date(),
+      cardId: card.id,
+      pipelineId: card.pipelineId,
+      stageId: card.stageId,
+      contactId: card.contactId,
+      source: contact.source,
+    };
+    this.events.emit(EVT.CARD_CREATED, evt);
     return card;
   }
 
@@ -235,6 +248,16 @@ export class CardsService {
       status: nextStatus,
       enteredStageAt: updated.enteredStageAt,
     });
+    const evt: CardMovedEvent = {
+      tenantId,
+      at: new Date(),
+      cardId: id,
+      pipelineId: card.pipelineId,
+      fromStageId: card.stageId,
+      toStageId: targetStage.id,
+      status: nextStatus,
+    };
+    this.events.emit(EVT.CARD_MOVED, evt);
     return updated;
   }
 }

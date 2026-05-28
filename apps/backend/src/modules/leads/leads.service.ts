@@ -6,10 +6,12 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { ClsService } from "nestjs-cls";
+import { EventEmitter2 } from "@nestjs/event-emitter";
 import { LeadStatus } from "@acoustic-crm/shared";
 import { readContext } from "../../common/tenant-context";
 import { PrismaService } from "../prisma/prisma.service";
 import { ContactsService } from "../contacts/contacts.service";
+import { EVT, type LeadCreatedEvent } from "../triggers/events";
 import { LeadWebhookDto } from "./dto/lead-webhook.dto";
 import { FindLeadsDto } from "./dto/find-leads.dto";
 
@@ -42,6 +44,7 @@ export class LeadsService {
     private readonly prisma: PrismaService,
     private readonly contacts: ContactsService,
     private readonly cls: ClsService,
+    private readonly events: EventEmitter2,
   ) {}
 
   private currentTenantId(): string {
@@ -51,9 +54,9 @@ export class LeadsService {
   }
 
   /** Public entrypoint from a webhook. CLS scope is already set by WebhookGuard. */
-  async createFromWebhook(source: string, dto: LeadWebhookDto, rawBody: unknown) {
+  async createFromWebhook(source: string, _dto: LeadWebhookDto, rawBody: unknown) {
     const tenantId = this.currentTenantId();
-    return this.prisma.t.lead.create({
+    const lead = await this.prisma.t.lead.create({
       data: {
         tenantId,
         source,
@@ -61,6 +64,14 @@ export class LeadsService {
         status: LeadStatus.UNSORTED,
       },
     });
+    const evt: LeadCreatedEvent = {
+      tenantId,
+      at: new Date(),
+      leadId: lead.id,
+      source,
+    };
+    this.events.emit(EVT.LEAD_CREATED, evt);
+    return lead;
   }
 
   list(query: FindLeadsDto) {

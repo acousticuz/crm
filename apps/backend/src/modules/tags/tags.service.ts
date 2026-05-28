@@ -5,8 +5,10 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { ClsService } from "nestjs-cls";
+import { EventEmitter2 } from "@nestjs/event-emitter";
 import { readContext } from "../../common/tenant-context";
 import { PrismaService } from "../prisma/prisma.service";
+import { EVT, type TagChangedEvent } from "../triggers/events";
 import { CreateTagDto, UpdateTagDto } from "./dto/tag.dto";
 
 @Injectable()
@@ -14,6 +16,7 @@ export class TagsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cls: ClsService,
+    private readonly events: EventEmitter2,
   ) {}
 
   private currentTenantId(): string {
@@ -89,11 +92,19 @@ export class TagsService {
       where: { id: cardId, deletedAt: null },
     });
     if (!card) throw new NotFoundException("Card not found");
-    return this.prisma.cardTag.upsert({
+    const row = await this.prisma.cardTag.upsert({
       where: { cardId_tagId: { cardId, tagId } },
       create: { cardId, tagId },
       update: {},
     });
+    const evt: TagChangedEvent = {
+      tenantId: card.tenantId,
+      at: new Date(),
+      cardId,
+      tagId,
+    };
+    this.events.emit(EVT.TAG_ADDED, evt);
+    return row;
   }
 
   async detach(cardId: string, tagId: string): Promise<{ cardId: string; tagId: string }> {
@@ -104,6 +115,13 @@ export class TagsService {
     });
     if (!card) throw new NotFoundException("Card not found");
     await this.prisma.cardTag.deleteMany({ where: { cardId, tagId } });
+    const evt: TagChangedEvent = {
+      tenantId: card.tenantId,
+      at: new Date(),
+      cardId,
+      tagId,
+    };
+    this.events.emit(EVT.TAG_REMOVED, evt);
     return { cardId, tagId };
   }
 }

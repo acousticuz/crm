@@ -2,6 +2,7 @@ import "reflect-metadata";
 import { Test, TestingModule } from "@nestjs/testing";
 import { BadRequestException } from "@nestjs/common";
 import { ClsModule, ClsService } from "nestjs-cls";
+import { EventEmitterModule } from "@nestjs/event-emitter";
 import { UserRole, StageType } from "@acoustic-crm/shared";
 import { PrismaService } from "../src/modules/prisma/prisma.service";
 import { PipelinesService } from "../src/modules/pipelines/pipelines.service";
@@ -34,7 +35,10 @@ describe("M3 — Kanban (pipelines, stages, cards, tags, notes, tasks)", () => {
 
   beforeAll(async () => {
     moduleRef = await Test.createTestingModule({
-      imports: [ClsModule.forRoot({ global: true })],
+      imports: [
+        ClsModule.forRoot({ global: true }),
+        EventEmitterModule.forRoot({ wildcard: true }),
+      ],
       providers: [
         PrismaService,
         PipelinesService,

@@ -2,6 +2,7 @@ import "reflect-metadata";
 import { Test, TestingModule } from "@nestjs/testing";
 import { ConflictException, BadRequestException } from "@nestjs/common";
 import { ClsModule, ClsService } from "nestjs-cls";
+import { EventEmitterModule } from "@nestjs/event-emitter";
 import { UserRole, LeadStatus } from "@acoustic-crm/shared";
 import { PrismaService } from "../src/modules/prisma/prisma.service";
 import { ContactsService } from "../src/modules/contacts/contacts.service";
@@ -24,7 +25,10 @@ describe("M2 — Contacts + Leads", () => {
 
   beforeAll(async () => {
     moduleRef = await Test.createTestingModule({
-      imports: [ClsModule.forRoot({ global: true })],
+      imports: [
+        ClsModule.forRoot({ global: true }),
+        EventEmitterModule.forRoot({ wildcard: true }),
+      ],
       providers: [PrismaService, ContactsService, LeadsService],
     }).compile();
 

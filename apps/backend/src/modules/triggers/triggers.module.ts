@@ -1,5 +1,12 @@
-import { Module } from "@nestjs/common";
+import { Global, Module } from "@nestjs/common";
+import { TriggersService } from "./triggers.service";
+import { TriggersController } from "./triggers.controller";
+import { TriggerEngine } from "./trigger.engine";
 
-// Triggers (automation engine) module — implemented in M4.
-@Module({})
+@Global()
+@Module({
+  controllers: [TriggersController],
+  providers: [TriggersService, TriggerEngine],
+  exports: [TriggersService, TriggerEngine],
+})
 export class TriggersModule {}
