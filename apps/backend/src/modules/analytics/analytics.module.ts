@@ -1,5 +1,10 @@
 import { Module } from "@nestjs/common";
+import { AnalyticsService } from "./analytics.service";
+import { AnalyticsController } from "./analytics.controller";
 
-// Analytics + KPI module — implemented in M9.
-@Module({})
+@Module({
+  controllers: [AnalyticsController],
+  providers: [AnalyticsService],
+  exports: [AnalyticsService],
+})
 export class AnalyticsModule {}
