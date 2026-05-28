@@ -3,6 +3,7 @@ import { AppLayout } from "@/components/AppLayout";
 import { LoginPage } from "@/pages/LoginPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { KanbanPage } from "@/pages/KanbanPage";
+import { InboxPage } from "@/pages/InboxPage";
 import { ScorecardPage } from "@/pages/ScorecardPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { useAuth } from "@/lib/auth";
@@ -30,6 +31,7 @@ export const router = createBrowserRouter([
       { index: true, element: <Navigate to="/kanban" replace /> },
       { path: "dashboard", element: <DashboardPage /> },
       { path: "kanban", element: <KanbanPage /> },
+      { path: "inbox", element: <InboxPage /> },
       { path: "scorecard/:callId", element: <ScorecardPage /> },
     ],
   },

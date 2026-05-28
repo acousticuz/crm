@@ -109,6 +109,8 @@ model Tenant {
   triggers         Trigger[]
   notes            Note[]
   auditLogs        AuditLog[]
+  inboxThreads     InboxThread[]
+  inboxMessages    InboxMessage[]
 
   @@index([status])
   @@map("tenants")
@@ -140,6 +142,7 @@ model User {
   authoredNotes     Note[]     @relation("NoteAuthor")
   reviewedQaScores  QAScore[]  @relation("QAReviewer")
   auditLogs         AuditLog[]
+  approvedInboxMessages InboxMessage[] @relation("InboxApprover")
 
   @@unique([tenantId, email])
   @@index([tenantId, role])
@@ -189,6 +192,7 @@ model Contact {
   smsLogs      SmsLog[]
   notes        Note[]
   leads        Lead[]
+  inboxThreads InboxThread[]
 
   @@index([tenantId])
   @@index([tenantId, email])
@@ -592,4 +596,58 @@ model AuditLog {
   @@index([tenantId, createdAt])
   @@index([tenantId, entityType, entityId])
   @@map("audit_logs")
+}
+
+// ====================== Omnichannel Inbox (M10) ======================
+//
+// Customer-facing channels (Instagram DMs, FB Messenger, Facebook comments)
+// flow into here. AI generates a draft reply that operators must approve
+// before anything is sent — medical/pricing/legal content is flagged and
+// never auto-sent (CLAUDE.md §5.10 safety requirement).
+
+model InboxThread {
+  id               String    @id @default(cuid())
+  tenantId         String
+  channel          String    // "instagram" | "facebook" | "facebook-comment" | ...
+  externalThreadId String?   // Graph API conversation/thread id
+  contactId        String?
+  status           String    @default("OPEN")  // OPEN | CLOSED
+  lastMessageAt    DateTime  @default(now())
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  tenant   Tenant         @relation(fields: [tenantId], references: [id])
+  contact  Contact?       @relation(fields: [contactId], references: [id])
+  messages InboxMessage[]
+
+  @@unique([tenantId, channel, externalThreadId])
+  @@index([tenantId, status])
+  @@map("inbox_threads")
+}
+
+model InboxMessage {
+  id                  String   @id @default(cuid())
+  tenantId            String   // denormalized for tenant-extension filtering
+  threadId            String
+  direction           String   // "INBOUND" | "OUTBOUND"
+  sender              String   // "customer" | "operator" | "ai-draft"
+  text                String
+  externalMessageId   String?
+  sentAt              DateTime?
+  status              String   @default("RECEIVED")
+  // RECEIVED (inbound) | DRAFT | NEEDS_REVIEW | APPROVED | SENT | REJECTED
+  sensitiveCategories String[] @default([])
+  approvedBy          String?
+  rejectionReason     String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant   Tenant      @relation(fields: [tenantId], references: [id])
+  thread   InboxThread @relation(fields: [threadId], references: [id])
+  approver User?       @relation("InboxApprover", fields: [approvedBy], references: [id])
+
+  @@index([tenantId, status])
+  @@index([threadId, createdAt])
+  @@map("inbox_messages")
 }

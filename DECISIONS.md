@@ -338,3 +338,26 @@ Ikkala yo'nalish ham `X-Worker-Secret` (shared `TELEPHONY_WORKER_SECRET` env) bi
 **Qaror:** `/analytics/operator-kpi` va `/trends` operator role uchun `query.userId` ni majburiy `user.sub` ga override qiladi. SUPERVISOR/ANALYST istalgan operator KPI ko'ra oladi.
 
 **Sabab:** Operator boshqa hamkasbining KPI'sini ko'rmasligi kerak. Bu controller qatlamida; service tomondan `userId` qabul qiladi, RBAC yuqorida.
+
+---
+
+## §45. Sensitivity guardrails — never auto-send medical/pricing/legal — M10
+**Qaror:** `detectSensitiveCategories(text)` o'zbek+rus regex'lari medical/pricing/legal kategoriyalarni aniqlaydi. Webhook ingest paytida ham customer inputi, ham AI draft tekshiriladi — agar topilsa, status=`NEEDS_REVIEW` va auto-send butunlay bloklanadi. AuditLog `inbox.draft.created` yozuvida `autoSendBlocked: true` flag bor.
+
+Operator drafni tahrirlasa va approve qilsa, **qayta sensitivity tekshiriladi** — agar operator chegirma yoki yuridik gap kiritgan bo'lsa, sensitivity tag'i SENT xabarda qoladi (audit visibility uchun). Operator sensitive matnni yuborishi MUMKIN — lekin har doim insonni javobgar qiladi.
+
+**Sabab:** CLAUDE.md §5.10: "Tibbiy/narx/yuridik javoblar HECH QACHON avtomatik yuborilmaydi." Acoustic kabi tibbiy biznesda noto'g'ri auto-reply kompaniya uchun reputatsiya va yuridik tahdid. Regex false positive operator review = 5 sekund yo'qotish; false negative auto-send = potentsial 5-figure xato. Trade-off aniq tarzda safety tomonga.
+
+---
+
+## §46. Inbox schema added via migration — extends §5.1 — M10
+**Qaror:** `InboxThread` va `InboxMessage` modellari `prisma/migrations/20260528013941_add_inbox/` migration orqali qo'shildi. CLAUDE.md §5.1 ushbu modellarni keltirmagan, ammo §5.10 Faza 2 omnichannel inbox uchun kerakli.
+
+**Sabab:** §5.1 dagi mavjud modellar (Lead, Contact, AuditLog) inbox tarixini saqlash uchun mos kelmaydi — channel-specific external IDs va sensitivity flags zarur. Yangi migration `Tenant.users[]` qatorida `inboxThreads + inboxMessages` qo'shadi (cascade soft-delete). Schema CLAUDE.md ga moslik buzilmagan — §5.1 minimal core entitlar ro'yxati edi.
+
+---
+
+## §47. Real Graph API integration deferred to M11
+**Qaror:** Webhook payload `InboxWebhookDto` Instagram/Facebook Graph API'dan keladigan ma'lumotni qabul qilish uchun, lekin signature verification va Graph API ga send chaqiruvi M11 da. `approveDraft` hozir status=`SENT` qiladi lekin tashqi API chaqirmaydi.
+
+**Sabab:** Graph API ulashish uchun Meta dev portali ro'yxatdan o'tish, Page Access Token, webhook URL HTTPS, App-secret signature va boshqa konfiguratsiya kerak. M10 oqim arxitekturasini va xavfsizlik qatlamini tasdiqladi (regex guardrails, AuditLog, state machine). M11 da real integratsiya — interface'lar tayyor, faqat sirtqi HTTP klient qo'shiladi.
