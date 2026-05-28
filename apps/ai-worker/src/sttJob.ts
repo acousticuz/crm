@@ -44,11 +44,15 @@ export async function runSttJob(
   deps: { adapter: SttAdapter; backend: BackendClient },
 ): Promise<void> {
   const audioUrl = resolveRecording(data);
+  console.log(
+    `STT[${deps.adapter.name}] call=${data.callId} cdr=${data.cdrUniqueId ?? "-"} audio=${audioUrl || "NONE"}`,
+  );
   const result = await deps.adapter.transcribe({
     audioUrl,
     language: data.language,
     callId: data.callId,
   });
+  console.log(`STT[${deps.adapter.name}] result(${result.text.length}): ${result.text.slice(0, 60)}`);
   await deps.backend.writeTranscript({
     tenantId: data.tenantId,
     callId: data.callId,
