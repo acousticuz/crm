@@ -42,7 +42,9 @@ export class WhisperSttAdapter implements SttAdapter {
     form.append("file", new Blob([buf], { type: "audio/wav" }), "audio.wav");
     form.append("model", model);
     form.append("response_format", "verbose_json");
-    if (req.language) form.append("language", req.language);
+    // Don't pass `language` — OpenAI rejects some ISO codes (e.g. "uz"), and
+    // Whisper auto-detects Uzbek/Russian fine. We map the detected language
+    // from the response instead.
 
     const res = await fetch(`${baseUrl}/audio/transcriptions`, {
       method: "POST",
