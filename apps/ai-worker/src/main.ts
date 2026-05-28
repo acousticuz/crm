@@ -3,6 +3,7 @@ import IORedis from "ioredis";
 import { QUEUES } from "@acoustic-crm/shared";
 import { MockSttAdapter } from "./stt/mock.stt";
 import { WhisperSttAdapter } from "./stt/whisper.stt";
+import { GoogleSttAdapter } from "./stt/google.stt";
 import type { SttAdapter } from "./stt/stt-adapter";
 import { MockLlmAdapter } from "./llm/mock.llm";
 import { ClaudeLlmAdapter } from "./llm/claude.llm";
@@ -18,6 +19,12 @@ import {
 
 function buildSttAdapter(): SttAdapter {
   const provider = process.env.STT_PROVIDER ?? "mock";
+  if (provider === "google") {
+    return new GoogleSttAdapter({
+      apiKey: process.env.GOOGLE_STT_API_KEY ?? "",
+      languageCode: process.env.GOOGLE_STT_LANGUAGE ?? "uz-UZ",
+    });
+  }
   if (provider === "whisper") {
     return new WhisperSttAdapter({
       apiKey: process.env.OPENAI_API_KEY ?? "",
