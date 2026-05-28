@@ -1,11 +1,14 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   UnauthorizedException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import type { Queue } from "bullmq";
 import { ClsService } from "nestjs-cls";
 import {
   CallDirection,
@@ -19,6 +22,7 @@ import { normalizePhone, tryNormalizePhone } from "../../common/phone";
 import { PrismaService } from "../prisma/prisma.service";
 import { RealtimeService } from "../realtime/realtime.service";
 import { IntegrationsService } from "../integrations/integrations.service";
+import { STT_QUEUE } from "../queue/queue.module";
 import {
   CallCompletedDto,
   CallIncomingDto,
@@ -36,7 +40,26 @@ export class CallsService {
     private readonly realtime: RealtimeService,
     private readonly config: ConfigService,
     private readonly integrations: IntegrationsService,
+    @Optional() @Inject(STT_QUEUE) private readonly sttQueue?: Pick<Queue, "add">,
   ) {}
+
+  /**
+   * Hand an answered call to the STT queue so ai-worker transcribes it and the
+   * analysis + QA pipeline runs. The mock STT adapter ignores the recording
+   * URL; the Whisper adapter needs a reachable audio file.
+   */
+  private async enqueueTranscription(callId: string, tenantId: string, recordingUrl: string) {
+    if (!this.sttQueue) return;
+    try {
+      await this.sttQueue.add(
+        "stt",
+        { callId, tenantId, recordingUrl, language: "uz" },
+        { attempts: 3, removeOnComplete: 100, removeOnFail: 50 },
+      );
+    } catch (err) {
+      this.logger.warn(`Enqueue STT failed for call ${callId}: ${(err as Error).message}`);
+    }
+  }
 
   /**
    * Cross-tenant decrypted FreePBX/AMI configs for the telephony worker to
@@ -303,6 +326,15 @@ export class CallsService {
           `MISSED call ${call.id} — no operator/admin to assign callback Task to`,
         );
       }
+    }
+
+    // Answered calls feed the transcription → analysis → QA pipeline.
+    if (dto.status === CallStatus.ANSWERED) {
+      await this.enqueueTranscription(
+        call.id,
+        dto.tenantId,
+        dto.recordingUrl ?? call.recordingUrl ?? "",
+      );
     }
 
     this.realtime.toTenant(dto.tenantId, SOCKET_EVENTS.CALL_ENDED, { call });

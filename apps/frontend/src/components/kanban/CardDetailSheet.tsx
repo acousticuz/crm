@@ -19,6 +19,7 @@ import {
   useCreateTask,
   useDetachTag,
   useOriginateCall,
+  useScorecard,
   useSendSms,
   useSmsTemplates,
   useTags,
@@ -304,14 +305,7 @@ export function CardDetailSheet({ cardId, onClose }: Props): JSX.Element {
               ) : (
                 <ul className="space-y-1 text-sm">
                   {card.calls.map((c) => (
-                    <li key={c.id} className="rounded border bg-card px-2 py-1">
-                      <div className="flex items-center justify-between">
-                        <span>{c.direction === "INBOUND" ? "⬇" : "⬆"} {c.status}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {format(new Date(c.startedAt), "dd MMM HH:mm")} · {c.duration}s
-                        </span>
-                      </div>
-                    </li>
+                    <CallRow key={c.id} call={c} />
                   ))}
                 </ul>
               )}
@@ -338,5 +332,98 @@ export function CardDetailSheet({ cardId, onClose }: Props): JSX.Element {
         )}
       </SheetContent>
     </Sheet>
+  );
+}
+
+interface CallRowProps {
+  call: {
+    id: string;
+    direction: string;
+    status: string;
+    startedAt: string;
+    duration: number;
+  };
+}
+
+function CallRow({ call }: CallRowProps): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const { data: sc, isLoading } = useScorecard(open ? call.id : null);
+  const answered = call.status === "ANSWERED";
+  return (
+    <li className="rounded border bg-card px-2 py-1">
+      <div className="flex items-center justify-between gap-2">
+        <span>
+          {call.direction === "INBOUND" ? "⬇" : "⬆"} {call.status}
+        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">
+            {format(new Date(call.startedAt), "dd MMM HH:mm")} · {call.duration}s
+          </span>
+          {answered && (
+            <button
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              className="text-xs text-primary hover:underline"
+            >
+              {open ? "Yopish" : "Tahlil"}
+            </button>
+          )}
+        </div>
+      </div>
+      {open && (
+        <div className="mt-2 space-y-2 border-t pt-2 text-xs">
+          {isLoading && <p className="text-muted-foreground">Yuklanmoqda...</p>}
+          {sc && (
+            <>
+              {sc.analysis ? (
+                <div className="space-y-0.5">
+                  {sc.analysis.sentiment && (
+                    <div>
+                      <span className="text-muted-foreground">Kayfiyat:</span> {sc.analysis.sentiment}
+                    </div>
+                  )}
+                  {sc.analysis.topic && (
+                    <div>
+                      <span className="text-muted-foreground">Mavzu:</span> {sc.analysis.topic}
+                    </div>
+                  )}
+                  {sc.analysis.summary && (
+                    <div>
+                      <span className="text-muted-foreground">Xulosa:</span> {sc.analysis.summary}
+                    </div>
+                  )}
+                  {sc.analysis.nextStep && (
+                    <div>
+                      <span className="text-muted-foreground">Keyingi qadam:</span>{" "}
+                      {sc.analysis.nextStep}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-muted-foreground">Tahlil hali tayyor emas.</p>
+              )}
+              {sc.qaScores.length > 0 && (
+                <div className="space-y-0.5">
+                  {sc.qaScores.map((q) => (
+                    <div key={q.id}>
+                      <span className="text-muted-foreground">QA ({q.script?.name ?? "skript"}):</span>{" "}
+                      <span className="font-medium">
+                        {q.totalScore}/{q.maxScore}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {sc.transcript?.text && (
+                <details>
+                  <summary className="cursor-pointer text-muted-foreground">Transkript</summary>
+                  <p className="mt-1 whitespace-pre-wrap">{sc.transcript.text}</p>
+                </details>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </li>
   );
 }

@@ -53,5 +53,18 @@ module.exports = {
       max_restarts: 20,
       time: true,
     },
+    {
+      // STT → AI analysis → QA consumer (BullMQ). Uses mock adapters until
+      // STT_PROVIDER/LLM_PROVIDER + API keys are set in .env.
+      name: "acoustic-ai-worker",
+      cwd: path.join(root, "apps/ai-worker"),
+      script: "dist/main.js",
+      exec_mode: "fork",
+      instances: 1,
+      env,
+      autorestart: true,
+      max_restarts: 20,
+      time: true,
+    },
   ],
 };

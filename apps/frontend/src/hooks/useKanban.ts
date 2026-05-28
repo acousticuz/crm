@@ -53,6 +53,33 @@ export function useUsers() {
   });
 }
 
+export interface CallScorecard {
+  id: string;
+  transcript: { text: string; language: string; confidence: number } | null;
+  analysis: {
+    sentiment: string | null;
+    topic: string | null;
+    summary: string | null;
+    nextStep: string | null;
+  } | null;
+  qaScores: Array<{
+    id: string;
+    totalScore: number;
+    maxScore: number;
+    script: { id: string; name: string } | null;
+  }>;
+}
+
+// Transcript + AI analysis + QA score for a single call (lazy — only fetched
+// when an operator expands the call in the card detail).
+export function useScorecard(callId: string | null) {
+  return useQuery<CallScorecard>({
+    queryKey: ["scorecard", callId],
+    queryFn: async () => (await api.get<CallScorecard>(`/qa/scorecard/${callId}`)).data,
+    enabled: !!callId,
+  });
+}
+
 export function useCardDetail(cardId: string | null) {
   return useQuery<CardDetail>({
     queryKey: ["card", cardId],
