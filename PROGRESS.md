@@ -20,7 +20,8 @@
 - [x] **DTO'lar** (`CreateUserDto`/`UpdateUserDto`) + `users.service` extension'ni qabul/saqlaydi (validatsiya: 2–6 raqam; bo'sh string tozalaydi). `PUBLIC_USER_SELECT`'ga qo'shildi.
 - [x] **Frontend** — Settings'da yangi **"Xodimlar"** tab (`UsersManager`): operatorlar ro'yxati + yaratish/tahrirlash/o'chirish, **PJSIP extension maydoni** bilan. `useUsers` hook (CRUD).
 - [x] **Test** — `calls.spec`: Originate operatorning PJSIP extension'i bilan chaqiriladi (userId emas) — `global.fetch` mock orqali tasdiqlangan.
-- [x] **Auto-extension (FreePBX'dan)** — worker `GET /worker/extensions` (AMI `PJSIPShowEndpoints`) PBX endpoint nomlarini qaytaradi; backend `GET /calls/pbx/extensions` (TENANT_ADMIN) uni proksi qiladi; "Xodimlar" UI'da "FreePBX'dan" tugmasi + `datalist` orqali extensionlar tanlanadi. PBX yetib bo'lmasa bo'sh ro'yxat (soft-degrade). Testlar: worker `MockAmiClient.listExtensions`, backend proksi + unreachable fallback.
+- [x] **Auto-extension (FreePBX'dan)** — worker `GET /worker/extensions` (AMI `PJSIPShowEndpoints`) PBX endpoint nomlarini qaytaradi; backend `GET /calls/pbx/extensions` (TENANT_ADMIN) uni proksi qiladi; "Xodimlar" UI'da "FreePBX'dan" tugmasi + ko'rinadigan chips orqali extensionlar tanlanadi. PBX yetib bo'lmasa bo'sh ro'yxat (soft-degrade). Live FreePBX'da tasdiqlangan (2000–2004). ⚠️ `asterisk-manager` ActionID'ni almashtirgani uchun event-oqimini yig'ish bilan tuzatildi.
+- [x] **FreePBX'dan to'liq import** — `POST /users/import-from-pbx` (TENANT_ADMIN): PBX extension ro'yxatidan har bir raqamli (trunk'siz) extension uchun OPERATOR user yaratadi (generatsiya qilingan email + bir martalik vaqtinchalik parol qaytariladi; mavjud/biriktirilgan extensionlar o'tkaziladi, idempotent). UI'da "FreePBX'dan import" tugmasi + natija jadvali (extension/email/parol). Test: `users-import.spec` (yaratish, skip existing/trunk, idempotentlik).
 
 ### Verification
 - [x] `pnpm build` — 5 paket xatosiz.

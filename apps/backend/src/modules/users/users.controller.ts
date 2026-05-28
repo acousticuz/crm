@@ -31,6 +31,13 @@ export class UsersController {
     return this.users.create(dto);
   }
 
+  @Roles(UserRole.TENANT_ADMIN)
+  @Post("import-from-pbx")
+  @Audit({ action: "user.import_pbx", entityType: "User" })
+  importFromPbx() {
+    return this.users.importFromPbx();
+  }
+
   @Roles(UserRole.TENANT_ADMIN, UserRole.SUPERVISOR, UserRole.ANALYST)
   @Get()
   list() {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Loader2, Pencil, Phone, Trash2, UserPlus } from "lucide-react";
+import { Download, Loader2, Pencil, Phone, Trash2, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,9 +8,11 @@ import { cn } from "@/lib/utils";
 import {
   useCreateUser,
   useDeleteUser,
+  useImportPbxUsers,
   usePbxExtensions,
   useUpdateUser,
   useUsers,
+  type ImportPbxResult,
   type ManagedUser,
   type UserRole,
 } from "@/hooks/useUsers";
@@ -53,12 +55,28 @@ export function UsersManager(): JSX.Element {
   const update = useUpdateUser();
   const del = useDeleteUser();
   const pbxExt = usePbxExtensions();
+  const importPbx = useImportPbxUsers();
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY);
   const [msg, setMsg] = useState<string | null>(null);
   const [extOptions, setExtOptions] = useState<string[]>([]);
+  const [importResult, setImportResult] = useState<ImportPbxResult | null>(null);
+  const [importErr, setImportErr] = useState<string | null>(null);
+
+  // Only numeric endpoints are assignable operator extensions (skip trunks).
+  const numericExtOptions = extOptions.filter((e) => /^\d{2,6}$/.test(e));
+
+  async function importFromPbx() {
+    setImportErr(null);
+    setImportResult(null);
+    try {
+      setImportResult(await importPbx.mutateAsync());
+    } catch (e) {
+      setImportErr(extractErr(e));
+    }
+  }
 
   async function loadExtensions() {
     setMsg(null);
@@ -141,11 +159,77 @@ export function UsersManager(): JSX.Element {
           Operatorlarni boshqaring. Har operatorga real <strong>PJSIP extension</strong> biriktiring —
           click-to-call shu raqamni jiringlatadi.
         </p>
-        <Button size="sm" onClick={openCreate}>
-          <UserPlus className="mr-1 h-4 w-4" />
-          Yangi xodim
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={importFromPbx}
+            disabled={importPbx.isPending}
+            title="FreePBX extensionlaridan operatorlarni avtomatik yaratish"
+          >
+            {importPbx.isPending ? (
+              <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="mr-1 h-4 w-4" />
+            )}
+            FreePBX'dan import
+          </Button>
+          <Button size="sm" onClick={openCreate}>
+            <UserPlus className="mr-1 h-4 w-4" />
+            Yangi xodim
+          </Button>
+        </div>
       </div>
+
+      {importErr && <p className="text-sm text-destructive">{importErr}</p>}
+      {importResult && (
+        <div className="rounded-lg border bg-card p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-sm font-semibold">
+              FreePBX import: {importResult.created.length} ta operator yaratildi
+            </h3>
+            <Button size="sm" variant="ghost" onClick={() => setImportResult(null)}>
+              Yopish
+            </Button>
+          </div>
+          {importResult.created.length > 0 ? (
+            <>
+              <p className="mb-2 text-xs text-amber-600">
+                Vaqtinchalik parollar faqat hozir ko'rsatiladi — saqlab oling va operatorlarga
+                yetkazing. Keyin har bir xodimni tahrirlab parolni o'zgartiring.
+              </p>
+              <div className="overflow-x-auto rounded-md border">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/50 text-left text-muted-foreground">
+                    <tr>
+                      <th className="px-2 py-1">Extension</th>
+                      <th className="px-2 py-1">Email</th>
+                      <th className="px-2 py-1">Vaqtinchalik parol</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importResult.created.map((c) => (
+                      <tr key={c.extension} className="border-t">
+                        <td className="px-2 py-1 font-medium">{c.extension}</td>
+                        <td className="px-2 py-1 font-mono">{c.email}</td>
+                        <td className="px-2 py-1 font-mono">{c.tempPassword}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-muted-foreground">Yangi yaratiladigan extension topilmadi.</p>
+          )}
+          <p className="mt-2 text-xs text-muted-foreground">
+            {importResult.skippedExisting.length > 0 &&
+              `Allaqachon biriktirilgan: ${importResult.skippedExisting.join(", ")}. `}
+            {importResult.skippedNonNumeric.length > 0 &&
+              `Trunk/raqamsiz (o'tkazildi): ${importResult.skippedNonNumeric.join(", ")}.`}
+          </p>
+        </div>
+      )}
 
       {showForm && (
         <div className="rounded-lg border bg-card p-4">
@@ -203,13 +287,13 @@ export function UsersManager(): JSX.Element {
                   {pbxExt.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "FreePBX'dan"}
                 </Button>
               </div>
-              {extOptions.length > 0 && (
+              {numericExtOptions.length > 0 && (
                 <div className="mt-1.5 space-y-1">
                   <p className="text-[11px] text-muted-foreground">
-                    {extOptions.length} ta topildi — tanlang:
+                    {numericExtOptions.length} ta topildi — tanlang:
                   </p>
                   <div className="flex flex-wrap gap-1">
-                    {extOptions.map((ext) => (
+                    {numericExtOptions.map((ext) => (
                       <button
                         key={ext}
                         type="button"

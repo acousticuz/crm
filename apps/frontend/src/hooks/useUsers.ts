@@ -73,3 +73,18 @@ export function usePbxExtensions() {
     mutationFn: async () => (await api.get<string[]>("/calls/pbx/extensions")).data,
   });
 }
+
+export interface ImportPbxResult {
+  created: Array<{ extension: string; email: string; tempPassword: string }>;
+  skippedExisting: string[];
+  skippedNonNumeric: string[];
+}
+
+// Bulk-provision operator accounts from the PBX's extension list.
+export function useImportPbxUsers() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => (await api.post<ImportPbxResult>("/users/import-from-pbx")).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+  });
+}
