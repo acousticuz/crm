@@ -60,6 +60,9 @@ interface PendingCall {
   direction: "INBOUND" | "OUTBOUND";
   startedAt: Date;
   answered: boolean;
+  // Set when the call is bridged/answered, so we can derive talk duration —
+  // this PBX's Hangup events don't carry billableseconds.
+  answeredAt?: Date;
 }
 
 /**
@@ -303,13 +306,22 @@ export class AsteriskAmiClient implements AmiClient {
       }
     } else if (name === "dialend") {
       const entry = this.pending.get(uniqueId);
-      if (entry) {
-        entry.answered = (evt.dialstatus ?? "").toUpperCase() === "ANSWER";
+      // Only ever latch to answered — a later CANCEL/CONGESTION DialEnd for the
+      // same channel (ring groups emit several) must not unset it.
+      if (entry && (evt.dialstatus ?? "").toUpperCase() === "ANSWER") {
+        entry.answered = true;
+        entry.answeredAt = new Date();
       }
     } else if (name === "hangup") {
       const entry = this.pending.get(uniqueId);
       if (!entry) return;
-      const duration = Number(evt.billableseconds ?? evt.duration ?? 0);
+      // This PBX's Hangup events omit billableseconds, so derive talk time from
+      // when the call was answered; fall back to the AMI field if present.
+      const billsec = Number(evt.billableseconds ?? evt.duration ?? 0);
+      const computed = entry.answeredAt
+        ? Math.max(0, Math.round((Date.now() - entry.answeredAt.getTime()) / 1000))
+        : 0;
+      const duration = billsec > 0 ? billsec : computed;
       const causeCode = String(evt.cause ?? "");
       const status: "ANSWERED" | "MISSED" | "BUSY" | "FAILED" = entry.answered
         ? "ANSWERED"
