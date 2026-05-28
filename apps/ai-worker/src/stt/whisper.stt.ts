@@ -17,6 +17,16 @@ function mapLanguage(lang?: string): "uz" | "ru" | "en" {
 }
 
 /**
+ * Strip transcription "looping" hallucinations — on quiet/noisy audio the model
+ * sometimes emits the same chunk dozens of times. Collapse any 1–40 char unit
+ * repeated 4+ times in a row down to one occurrence. We never invent text; we
+ * only remove the model's runaway repetition.
+ */
+function stripLoops(text: string): string {
+  return text.replace(/(.{1,40}?)\1{3,}/g, "$1").trim();
+}
+
+/**
  * OpenAI Whisper STT adapter. Reads the (NFS-mounted) recording file and
  * uploads it to /v1/audio/transcriptions with verbose_json so we get
  * per-segment timestamps. FreePBX MixMonitor writes a single mixed mono file,
@@ -25,7 +35,9 @@ function mapLanguage(lang?: string): "uz" | "ru" | "en" {
 export class WhisperSttAdapter implements SttAdapter {
   readonly name = "whisper";
 
-  constructor(private readonly config: { apiKey: string; baseUrl?: string; model?: string }) {}
+  constructor(
+    private readonly config: { apiKey: string; baseUrl?: string; model?: string; language?: string },
+  ) {}
 
   async transcribe(req: SttRequest): Promise<SttTranscript> {
     if (!req.audioUrl) {
@@ -46,8 +58,15 @@ export class WhisperSttAdapter implements SttAdapter {
     form.append("file", new Blob([buf], { type: "audio/wav" }), "audio.wav");
     form.append("model", model);
     form.append("response_format", isGpt4o ? "json" : "verbose_json");
-    // Don't pass `language` — OpenAI rejects some ISO codes (e.g. "uz"); the
-    // models auto-detect. We map the detected language from the response.
+    // temperature=0 → deterministic, verbatim transcription with the least
+    // hallucination (the model must not invent words on noisy/quiet audio).
+    form.append("temperature", "0");
+    // Force the language when configured (OPENAI_STT_LANGUAGE) so the model
+    // doesn't mis-detect Uzbek as Kazakh/Azerbaijani. whisper-1 rejects "uz",
+    // so only send for the gpt-4o transcription models.
+    if (isGpt4o && this.config.language) {
+      form.append("language", this.config.language);
+    }
 
     const res = await fetch(`${baseUrl}/audio/transcriptions`, {
       method: "POST",
@@ -59,7 +78,7 @@ export class WhisperSttAdapter implements SttAdapter {
       throw new Error(`OpenAI STT HTTP ${res.status}: ${errText.slice(0, 200)}`);
     }
     const json = (await res.json()) as WhisperVerboseResponse;
-    const text = (json.text ?? "").trim();
+    const text = stripLoops((json.text ?? "").trim());
 
     if (isGpt4o) {
       // No timestamps/language from the gpt-4o transcription models — one
