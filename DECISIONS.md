@@ -317,3 +317,24 @@ Ikkala yo'nalish ham `X-Worker-Secret` (shared `TELEPHONY_WORKER_SECRET` env) bi
 **Qaror:** Schema'da `QAScore.@@unique([callId, scriptId])` constraint yo'q (CLAUDE.md §5.1'da kelishilgan). Service qatlamida `findFirst` + `update`/`create` orqali idempotent retry'ni qo'lda majburlanadi.
 
 **Sabab:** QAScore ko'p script bilan tirikan (har Script bir QAScore) — composite unique bo'lsa, future bir nechta script versiyalari uchun qiyinchilik bo'lardi. Manual lookup oddiy, audit trail ham ko'rinarli. Race condition risk — bir vaqtda ikki worker bir xil (callId, scriptId) ga yozsa, ikkala ham create — keyin admin bittasini o'chiradi. Hozircha bu yopilmagan (M11'da QAScore'ga unique constraint qo'shish ko'rib chiqiladi).
+
+---
+
+## §42. Analytics aggregation in app layer — M9
+**Qaror:** Operator KPI / weakest-criteria / trends Prisma queries + TypeScript reduce. JSON criteriaResults arraylari Postgres jsonb_array_elements bilan emas, balki application'da iteratsiya qilinadi.
+
+**Sabab:** M9 da kichik-o'rta tenantlar uchun bu yetarli. Raw SQL JSON unnesting Prisma type safety'ni buzadi. Million+ scale bo'lsa materialized view yoki agregat jadvallar (M11) ko'rib chiqiladi.
+
+---
+
+## §43. Recharts for dashboard — M9
+**Qaror:** Frontend grafikalari uchun `recharts`. KPI tile'lar shadcn-uslubli cardlar; line/bar/pie chart'lar recharts.
+
+**Sabab:** Recharts React-native va deklarativ — shadcn/Tailwind UI bilan oson mos keladi. Bundle 891 kB (264 kB gzip) — bir vaqtda yuklash hozir maqbul. M11'da `manualChunks` orqali charts alohida chunk'ga ajratiladi.
+
+---
+
+## §44. Operator-scoping in analytics — M9
+**Qaror:** `/analytics/operator-kpi` va `/trends` operator role uchun `query.userId` ni majburiy `user.sub` ga override qiladi. SUPERVISOR/ANALYST istalgan operator KPI ko'ra oladi.
+
+**Sabab:** Operator boshqa hamkasbining KPI'sini ko'rmasligi kerak. Bu controller qatlamida; service tomondan `userId` qabul qiladi, RBAC yuqorida.
