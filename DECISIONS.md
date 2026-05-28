@@ -361,3 +361,17 @@ Operator drafni tahrirlasa va approve qilsa, **qayta sensitivity tekshiriladi** 
 **Qaror:** Webhook payload `InboxWebhookDto` Instagram/Facebook Graph API'dan keladigan ma'lumotni qabul qilish uchun, lekin signature verification va Graph API ga send chaqiruvi M11 da. `approveDraft` hozir status=`SENT` qiladi lekin tashqi API chaqirmaydi.
 
 **Sabab:** Graph API ulashish uchun Meta dev portali ro'yxatdan o'tish, Page Access Token, webhook URL HTTPS, App-secret signature va boshqa konfiguratsiya kerak. M10 oqim arxitekturasini va xavfsizlik qatlamini tasdiqladi (regex guardrails, AuditLog, state machine). M11 da real integratsiya — interface'lar tayyor, faqat sirtqi HTTP klient qo'shiladi.
+
+---
+
+## §48. Production deploy via docker-compose.prod.yml — M11
+**Qaror:** Prod stack alohida `docker-compose.prod.yml` orqali boshqariladi: 8 ta xizmat (postgres/redis/minio/backend/frontend/telephony-worker/ai-worker/nginx), tashqi port faqat nginx (80/443). Backend/workerlar/DB hech qachon to'g'ridan-to'g'ri ko'rinmaydi. Multi-stage Dockerfile'lar Node 20 Alpine.
+
+**Sabab:** Standart muhitda nginx single ingress; minimal attack surface. Multi-stage build prod imagini < 200 MB qiladi (build vositalari final image'da yo'q). Compose dev/prod farqi `docker-compose.yml` (host bind portlar) va `docker-compose.prod.yml` (faqat internal network).
+
+---
+
+## §49. Smoke-test runs against the dev DB with mock adapters — M11
+**Qaror:** Smoke-test (`apps/backend/test/smoke.spec.ts`) `pnpm test` ichida ishlatiladi va boshqa specs bilan birga dev Postgres'da yuradi. Mock AMI/STT/LLM/SMS adapter'lar ishlatilgan. Real provayderlar bilan smoke M11 deploy'dan keyin staging muhitda ishlatiladi.
+
+**Sabab:** Smoke jest spec sifatida — CI-friendly va boshqa testlarning fixture cleanup pattern'iga mos. Real adapter'lar test'da network/api kvota/auth/flaky bo'lardi. Mock'lar Acoustic talab qiladigan pipeline xulqi shaklini tasdiqlaydi: call → transcript → analysis → QA → trigger → SMS — har transition saqlanadi, retry idempotent, multi-tenant izolyatsiya buzilmaydi.
