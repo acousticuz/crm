@@ -123,6 +123,36 @@ export function useCreateTask() {
   });
 }
 
+interface SmsTemplate {
+  id: string;
+  name: string;
+  body: string;
+}
+
+export function useSmsTemplates() {
+  return useQuery<SmsTemplate[]>({
+    queryKey: ["sms-templates"],
+    queryFn: async () => (await api.get<SmsTemplate[]>("/sms/templates")).data,
+  });
+}
+
+export function useSendSms() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      cardId?: string;
+      contactId?: string;
+      phone: string;
+      templateId?: string;
+      text?: string;
+      variables?: Record<string, string | number>;
+    }) => (await api.post("/sms/send", input)).data,
+    onSuccess: (_d, vars) => {
+      if (vars.cardId) qc.invalidateQueries({ queryKey: ["card", vars.cardId] });
+    },
+  });
+}
+
 /**
  * Subscribe to tenant Socket.io events and invalidate the card queries so
  * the board re-fetches when other operators move/create/update cards.

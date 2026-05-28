@@ -18,6 +18,8 @@ import {
   useCreateNote,
   useCreateTask,
   useDetachTag,
+  useSendSms,
+  useSmsTemplates,
   useTags,
   useUsers,
 } from "@/hooks/useKanban";
@@ -32,15 +34,21 @@ export function CardDetailSheet({ cardId, onClose }: Props): JSX.Element {
   const { data: card } = useCardDetail(cardId);
   const { data: tags = [] } = useTags();
   const { data: users = [] } = useUsers();
+  const { data: smsTemplates = [] } = useSmsTemplates();
   const attachTag = useAttachTag();
   const detachTag = useDetachTag();
   const createNote = useCreateNote();
   const createTask = useCreateTask();
+  const sendSms = useSendSms();
 
   const [noteText, setNoteText] = useState("");
   const [taskText, setTaskText] = useState("");
   const [taskAssignee, setTaskAssignee] = useState("");
   const [taskDue, setTaskDue] = useState("");
+  const [smsOpen, setSmsOpen] = useState(false);
+  const [smsTemplateId, setSmsTemplateId] = useState("");
+  const [smsText, setSmsText] = useState("");
+  const [smsError, setSmsError] = useState<string | null>(null);
 
   const attachedTagIds = new Set(card?.cardTags?.map((ct) => ct.tagId) ?? []);
 
@@ -66,13 +74,89 @@ export function CardDetailSheet({ cardId, onClose }: Props): JSX.Element {
                   <Phone className="mr-1 h-4 w-4" />
                   Qo'ng'iroq qilish
                 </Button>
-                <Button size="sm" variant="outline" disabled title="M5 da ulanadi">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setSmsOpen((v) => !v);
+                    setSmsError(null);
+                  }}
+                  disabled={!card.contact.phones[0]}
+                >
                   <MessageSquare className="mr-1 h-4 w-4" />
                   SMS yuborish
                 </Button>
               </div>
+              {smsOpen && (
+                <div className="space-y-2 rounded border bg-muted/30 p-2">
+                  <div className="text-xs text-muted-foreground">
+                    Qabul qiluvchi: <strong>{card.contact.phones[0] ?? "—"}</strong>
+                  </div>
+                  <select
+                    className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+                    value={smsTemplateId}
+                    onChange={(e) => {
+                      setSmsTemplateId(e.target.value);
+                      const t = smsTemplates.find((s) => s.id === e.target.value);
+                      if (t) setSmsText(t.body);
+                    }}
+                  >
+                    <option value="">Shablonsiz (erkin matn)</option>
+                    {smsTemplates.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                  <Textarea
+                    placeholder="SMS matni (Salom {ism}, ... shaklida o'zgaruvchilar)"
+                    value={smsText}
+                    onChange={(e) => setSmsText(e.target.value)}
+                  />
+                  {smsError && (
+                    <div className="rounded bg-destructive/10 px-2 py-1 text-xs text-destructive">
+                      {smsError}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      disabled={!smsText && !smsTemplateId}
+                      onClick={async () => {
+                        setSmsError(null);
+                        try {
+                          await sendSms.mutateAsync({
+                            cardId: card.id,
+                            contactId: card.contact.id,
+                            phone: card.contact.phones[0],
+                            templateId: smsTemplateId || undefined,
+                            text: smsTemplateId ? undefined : smsText,
+                            variables: {
+                              ism: card.contact.fullName,
+                              sana: new Date().toLocaleDateString("uz-UZ"),
+                            },
+                          });
+                          setSmsOpen(false);
+                          setSmsText("");
+                          setSmsTemplateId("");
+                        } catch (err) {
+                          const msg =
+                            (err as { response?: { data?: { message?: string } } }).response?.data?.message ??
+                            "SMS yuborishda xato";
+                          setSmsError(typeof msg === "string" ? msg : JSON.stringify(msg));
+                        }
+                      }}
+                    >
+                      Yuborish
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setSmsOpen(false)}>
+                      Bekor
+                    </Button>
+                  </div>
+                </div>
+              )}
               <p className="text-xs text-muted-foreground">
-                Tugmalar M5 (SMS) va M6 (telefoniya) milestone'larida ulanadi.
+                Qo'ng'iroq tugmasi M6 (FreePBX telefoniya) milestone'da ulanadi.
               </p>
             </section>
 
@@ -218,12 +302,15 @@ export function CardDetailSheet({ cardId, onClose }: Props): JSX.Element {
             <section className="space-y-2">
               <h3 className="text-sm font-semibold">SMS tarixi (oxirgi 5)</h3>
               {card.smsLogs.length === 0 ? (
-                <p className="text-xs text-muted-foreground">SMS M5 da ulanadi.</p>
+                <p className="text-xs text-muted-foreground">Hech qanday SMS yuborilmagan.</p>
               ) : (
                 <ul className="space-y-1 text-sm">
                   {card.smsLogs.map((s) => (
-                    <li key={s.id}>
-                      {s.phone} · {s.status} · {format(new Date(s.createdAt), "dd MMM HH:mm")}
+                    <li key={s.id} className="rounded border bg-card px-2 py-1">
+                      <div className="text-xs text-muted-foreground">
+                        {s.phone} · {s.status} · {format(new Date(s.createdAt), "dd MMM HH:mm")}
+                      </div>
+                      <div className="truncate">{s.text}</div>
                     </li>
                   ))}
                 </ul>

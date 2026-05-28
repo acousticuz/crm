@@ -190,7 +190,42 @@ Konteyner ichidagi portlar standart. Host portlari `.env` orqali boshqariladi.
 
 ---
 
-## §24. GIN index on `Contact.phones` deferred
+## §24. Domain events via @nestjs/event-emitter — M4
+**Qaror:** Trigger oqimi NestJS'ning ichki `EventEmitter2` orqali implementatsiya qilinadi (sinxron emit, lekin handlerlar async). Triggerlar uchun BullMQ navbati hozircha yo'q — `card.move`/`tag.attach` HTTP javobi tezda qaytadi va trigger ishi background'da yuradi.
+
+**Sabab:** BullMQ qo'shilsa qo'shimcha infra (Redis ulanishi worker) M4 da hozirgi ehtiyojdan oshib ketadi. Trigger actions DB operatsiyalari — agar fail bo'lsa, log + skip. Retry siyosati keyinroq (BullMQ M11 ga rejalashtirilgan), shu vaqtda action turlari ko'paygach qayta ko'rib chiqamiz. Test'larda lifecycle uchun `moduleRef.init()` chaqirish kerak (EventSubscribersLoader onApplicationBootstrap'da ishlaydi).
+
+---
+
+## §25. SMS adapter pattern (Eskiz + Play Mobile + Mock) — M5
+**Qaror:** `SmsAdapter` interfeysi 3 implementatsiya bilan. `SmsAdapterFactory` Tenant.settings.smsConfig.provider bo'yicha tanlaydi (default: mock). Har adapter o'z `send()` ichida HTTP chaqiruvi qiladi (Eskiz: token cache, Play: basic auth).
+
+**Sabab:** CLAUDE.md §2/§5.5 adapter pattern majburiy. Mock — testlar va dev fallback; har tenant CRM ichidan o'z provayderini sozlaydi (M11'da SettingsPage). Adapter inputlarida `phone+text`, output `status+providerMessageId+errorMessage` — kichik kontrakt.
+
+---
+
+## §26. SMS template variables `{ism}/{sana}/{summa}` — M5
+**Qaror:** Mini interpolation engine (`template.ts`) — faqat `{key}` placeholderlarni almashtiradi. Noma'lum kalitlar buzilmaydi (qo'lda topish oson). Trigger SMS uchun avtomatik vars: `ism` (contact.fullName), `sana` (locale uz-UZ), `summa`/`budget` (card.budget), `phone`.
+
+**Sabab:** Mustahkam template engine (Handlebars/Liquid) kerakli emas — SMS qisqa, mantiq yo'q. Yengil regex `{(\w+)\}` xavfsiz va o'qiladigan. Qachondir loop/conditional kerak bo'lsa, Liquid ga ko'tarish oson.
+
+---
+
+## §27. SMS rate limit — in-memory, 60s oyna — M5
+**Qaror:** `SmsRateLimiter` — Map bilan timestamp arraylar. Per-phone 3/60s (anti-spam), per-tenant 60/60s (anti-abuse). Multi-instance prod'da Redis backed bo'lishi kerak.
+
+**Sabab:** CLAUDE.md §5.5 "Spam/limit himoyasi". Eskiz va Play providerlar o'zlarining limitlariga ega; bizniki birinchi himoya qatlami — bir foydalanuvchi tasodifan loop yoki bot xato qilsa, biz darhol to'xtatamiz. M11'da multi-instance bo'lsa Redis ga ko'chamiz.
+
+---
+
+## §28. SMS Webhook auth deferred to M11
+**Qaror:** `/sms/webhook/:tenantId/:provider` hozircha secret tekshirmaydi. Provider'lar message_id ni qaytarib yuboradi — biz unga qarab logni topamiz. Bad actor ham bizning providerMessageId ni topa olmasligi kerak.
+
+**Sabab:** Eskiz/Play webhook konfiguratsiyasi har biriga turlicha (HMAC, IP allowlist, shared secret). M5'da to'liq oqim ishlashi muhim; webhook auth M11 prod-hardening da qo'shiladi.
+
+---
+
+## §29. GIN index on `Contact.phones` deferred
 **Qaror:** Prisma'da `String[]` ustun uchun GIN index sintaksisi preview-feature, M0 da `@@index([tenantId])` + `@@index([tenantId, email])` qoldirildi. Telefon bo'yicha tezkor qidiruv kerak bo'lsa (M9 da), GIN index'ni raw SQL migration orqali qo'shamiz.
 
 **Sabab:** Loyihaning birinchi migratsiyasini sodda saqlash; M3 da kichik tenantlar uchun btree+hasSome yetarli. Million qator chegarasida qayta ko'rib chiqamiz.
