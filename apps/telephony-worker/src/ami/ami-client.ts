@@ -44,6 +44,9 @@ export interface AmiClient {
   /** Operator → AMI Originate (outbound call). */
   originate(req: AmiOriginateRequest): Promise<void>;
 
+  /** List the PBX's configured PJSIP extension names (e.g. "2000", "2001"). */
+  listExtensions(): Promise<string[]>;
+
   /** Hook a listener for channel-start (ringing) events — creates the Call
    * row eagerly so missed/busy/failed calls are never lost. */
   onStarted(handler: (evt: AmiCallStarted) => void | Promise<void>): void;

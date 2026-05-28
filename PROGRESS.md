@@ -20,6 +20,7 @@
 - [x] **DTO'lar** (`CreateUserDto`/`UpdateUserDto`) + `users.service` extension'ni qabul/saqlaydi (validatsiya: 2–6 raqam; bo'sh string tozalaydi). `PUBLIC_USER_SELECT`'ga qo'shildi.
 - [x] **Frontend** — Settings'da yangi **"Xodimlar"** tab (`UsersManager`): operatorlar ro'yxati + yaratish/tahrirlash/o'chirish, **PJSIP extension maydoni** bilan. `useUsers` hook (CRUD).
 - [x] **Test** — `calls.spec`: Originate operatorning PJSIP extension'i bilan chaqiriladi (userId emas) — `global.fetch` mock orqali tasdiqlangan.
+- [x] **Auto-extension (FreePBX'dan)** — worker `GET /worker/extensions` (AMI `PJSIPShowEndpoints`) PBX endpoint nomlarini qaytaradi; backend `GET /calls/pbx/extensions` (TENANT_ADMIN) uni proksi qiladi; "Xodimlar" UI'da "FreePBX'dan" tugmasi + `datalist` orqali extensionlar tanlanadi. PBX yetib bo'lmasa bo'sh ro'yxat (soft-degrade). Testlar: worker `MockAmiClient.listExtensions`, backend proksi + unreachable fallback.
 
 ### Verification
 - [x] `pnpm build` — 5 paket xatosiz.

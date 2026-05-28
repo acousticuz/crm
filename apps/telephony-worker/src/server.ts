@@ -30,6 +30,30 @@ export function startWorkerServer(opts: ServerOpts): () => void {
     });
   });
 
+  app.get("/worker/extensions", async (req: Request, res: Response) => {
+    const secret = req.header("x-worker-secret");
+    if (!secret || secret !== opts.sharedSecret) {
+      res.status(401).json({ error: "Invalid worker credentials" });
+      return;
+    }
+    const tenantId = String(req.query.tenantId ?? "");
+    if (!tenantId) {
+      res.status(400).json({ error: "tenantId required" });
+      return;
+    }
+    const client = opts.resolveClient(tenantId);
+    if (!client) {
+      res.status(503).json({ error: "No AMI connection for this tenant" });
+      return;
+    }
+    try {
+      const extensions = await client.listExtensions();
+      res.json({ extensions });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
   app.post("/worker/originate", async (req: Request, res: Response) => {
     const secret = req.header("x-worker-secret");
     if (!secret || secret !== opts.sharedSecret) {

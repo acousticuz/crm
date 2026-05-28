@@ -66,3 +66,10 @@ export function useDeleteUser() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
   });
 }
+
+// Lazily fetch the PBX extension list from FreePBX (via the telephony worker).
+export function usePbxExtensions() {
+  return useMutation({
+    mutationFn: async () => (await api.get<string[]>("/calls/pbx/extensions")).data,
+  });
+}

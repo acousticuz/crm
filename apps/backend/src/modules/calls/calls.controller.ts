@@ -69,6 +69,13 @@ export class CallsController {
   // ===== Operator endpoints =====
 
   @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.TENANT_ADMIN)
+  @Get("calls/pbx/extensions")
+  pbxExtensions() {
+    return this.calls.listPbxExtensions();
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.TENANT_ADMIN, UserRole.SUPERVISOR, UserRole.OPERATOR)
   @Post("calls/originate")
   @HttpCode(HttpStatus.ACCEPTED)

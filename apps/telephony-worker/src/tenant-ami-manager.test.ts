@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { AmiClient, AmiOriginateRequest } from "./ami/ami-client";
 import type { ConfigSource, FreePbxConfig } from "./freepbx-config";
 import { TenantAmiManager } from "./tenant-ami-manager";
+import { MockAmiClient } from "./ami/mock.ami";
 
 const silent = { log: () => {}, error: () => {} };
 
@@ -17,6 +18,9 @@ class FakeAmi implements AmiClient {
     this.connected = false;
   }
   async originate(_req: AmiOriginateRequest): Promise<void> {}
+  async listExtensions(): Promise<string[]> {
+    return [];
+  }
   onStarted(): void {}
   onIncoming(): void {}
   onCompleted(): void {}
@@ -79,4 +83,11 @@ test("drops a tenant whose integration was removed", async () => {
   await mgr.sync();
   assert.equal(mgr.tenantCount(), 0);
   assert.equal(client.connected, false);
+});
+
+test("MockAmiClient lists extensions for dev/click-to-call assignment", async () => {
+  const ami = new MockAmiClient();
+  const exts = await ami.listExtensions();
+  assert.ok(Array.isArray(exts));
+  assert.ok(exts.includes("2000"));
 });

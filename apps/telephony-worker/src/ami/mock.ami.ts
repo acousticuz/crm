@@ -42,6 +42,11 @@ export class MockAmiClient implements AmiClient {
     this.completed.push(h);
   }
 
+  async listExtensions(): Promise<string[]> {
+    // Deterministic sample range for dev/tests (FreePBX-style 4-digit exts).
+    return ["2000", "2001", "2002", "2003"];
+  }
+
   async originate(req: AmiOriginateRequest): Promise<void> {
     const startedAt = new Date().toISOString();
     const base: AmiCallEvent = {

@@ -18,6 +18,8 @@ interface AsteriskManagerInstance {
 
 interface ManagerEvent {
   event: string;
+  actionid?: string;
+  objectname?: string;
   uniqueid?: string;
   linkedid?: string;
   channel?: string;
@@ -81,6 +83,11 @@ export class AsteriskAmiClient implements AmiClient {
   private incomingHandlers: Array<(e: AmiCallEvent) => void | Promise<void>> = [];
   private completedHandlers: Array<(e: AmiCallCompleted) => void | Promise<void>> = [];
   private pending = new Map<string, PendingCall>();
+  // In-flight PJSIPShowEndpoints requests, keyed by ActionID.
+  private endpointRequests = new Map<
+    string,
+    { names: string[]; resolve: (names: string[]) => void; timer: ReturnType<typeof setTimeout> }
+  >();
 
   constructor(
     private readonly config: {
@@ -191,10 +198,55 @@ export class AsteriskAmiClient implements AmiClient {
     });
   }
 
+  async listExtensions(): Promise<string[]> {
+    if (!this.ami) {
+      throw new Error("AsteriskAmiClient.listExtensions: not connected");
+    }
+    const actionId = `ext-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    return new Promise<string[]>((resolve) => {
+      const timer = setTimeout(() => {
+        const req = this.endpointRequests.get(actionId);
+        if (req) {
+          this.endpointRequests.delete(actionId);
+          resolve(req.names);
+        }
+      }, 5000);
+      this.endpointRequests.set(actionId, { names: [], resolve, timer });
+      this.ami!.action({ Action: "PJSIPShowEndpoints", ActionID: actionId }, (err) => {
+        if (err) {
+          const req = this.endpointRequests.get(actionId);
+          if (req) {
+            clearTimeout(req.timer);
+            this.endpointRequests.delete(actionId);
+          }
+          resolve([]);
+        }
+      });
+    });
+  }
+
   // ===== AMI event router =====
 
   private async handleEvent(evt: ManagerEvent): Promise<void> {
     const name = (evt.event ?? "").toLowerCase();
+
+    // PJSIPShowEndpoints responses arrive as a stream of EndpointList events
+    // followed by EndpointListComplete, correlated by ActionID.
+    if (name === "endpointlist") {
+      const req = evt.actionid ? this.endpointRequests.get(evt.actionid) : undefined;
+      if (req && evt.objectname) req.names.push(evt.objectname);
+      return;
+    }
+    if (name === "endpointlistcomplete") {
+      const req = evt.actionid ? this.endpointRequests.get(evt.actionid) : undefined;
+      if (req) {
+        clearTimeout(req.timer);
+        this.endpointRequests.delete(evt.actionid!);
+        req.resolve(req.names);
+      }
+      return;
+    }
+
     const uniqueId = evt.uniqueid ?? evt.linkedid;
     if (!uniqueId) return;
 

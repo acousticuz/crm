@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   useCreateUser,
   useDeleteUser,
+  usePbxExtensions,
   useUpdateUser,
   useUsers,
   type ManagedUser,
@@ -50,11 +51,26 @@ export function UsersManager(): JSX.Element {
   const create = useCreateUser();
   const update = useUpdateUser();
   const del = useDeleteUser();
+  const pbxExt = usePbxExtensions();
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY);
   const [msg, setMsg] = useState<string | null>(null);
+  const [extOptions, setExtOptions] = useState<string[]>([]);
+
+  async function loadExtensions() {
+    setMsg(null);
+    try {
+      const list = await pbxExt.mutateAsync();
+      setExtOptions(list);
+      if (list.length === 0) {
+        setMsg("FreePBX'dan extension topilmadi (PBX ulanmagan yoki ruxsat yo'q).");
+      }
+    } catch (e) {
+      setMsg(extractErr(e));
+    }
+  }
 
   const isEditing = editingId !== null;
 
@@ -167,13 +183,35 @@ export function UsersManager(): JSX.Element {
                 ))}
               </select>
             </Field>
-            <Field label="PJSIP extension (masalan 101)">
-              <Input
-                inputMode="numeric"
-                placeholder="101"
-                value={form.extension}
-                onChange={(e) => set("extension", e.target.value)}
-              />
+            <Field label="PJSIP extension (masalan 2000)">
+              <div className="flex gap-2">
+                <Input
+                  list="pbx-ext-options"
+                  inputMode="numeric"
+                  placeholder="2000"
+                  value={form.extension}
+                  onChange={(e) => set("extension", e.target.value)}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={loadExtensions}
+                  disabled={pbxExt.isPending}
+                  title="FreePBX'dan extensionlarni yuklash"
+                >
+                  {pbxExt.isPending ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    "FreePBX'dan"
+                  )}
+                </Button>
+              </div>
+              <datalist id="pbx-ext-options">
+                {extOptions.map((ext) => (
+                  <option key={ext} value={ext} />
+                ))}
+              </datalist>
             </Field>
             <Field label="Filial ID (ixtiyoriy)">
               <Input value={form.branchId} onChange={(e) => set("branchId", e.target.value)} />

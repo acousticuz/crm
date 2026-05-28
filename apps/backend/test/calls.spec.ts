@@ -277,4 +277,34 @@ describe("M6 — Calls (AMI mock + inbound + MISSED + tenant isolation)", () => 
       fetchSpy.mockRestore();
     }
   });
+
+  it("lists PBX extensions by proxying to the worker for the current tenant", async () => {
+    const captured: { url?: string } = {};
+    const fetchSpy = jest
+      .spyOn(global, "fetch")
+      .mockImplementation(async (url: RequestInfo | URL) => {
+        captured.url = String(url);
+        return new Response(JSON.stringify({ extensions: ["2000", "2001", "2002"] }), {
+          status: 200,
+        });
+      });
+    try {
+      const exts = await asTenant(tenantId, () => calls.listPbxExtensions());
+      expect(exts).toEqual(["2000", "2001", "2002"]);
+      expect(captured.url).toContain("/worker/extensions");
+      expect(captured.url).toContain(`tenantId=${tenantId}`);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("returns an empty extension list when the worker is unreachable", async () => {
+    const fetchSpy = jest.spyOn(global, "fetch").mockRejectedValue(new Error("ECONNREFUSED"));
+    try {
+      const exts = await asTenant(tenantId, () => calls.listPbxExtensions());
+      expect(exts).toEqual([]);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
 });

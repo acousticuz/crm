@@ -330,6 +330,29 @@ export class CallsService {
     }
   }
 
+  /**
+   * Ask the telephony worker for the tenant's PBX extension list (via AMI
+   * PJSIPShowEndpoints) so the admin can assign operators to real extensions.
+   * Degrades gracefully to an empty list if the worker/PBX is unreachable.
+   */
+  async listPbxExtensions(): Promise<string[]> {
+    const { tenantId } = this.currentUser();
+    const workerUrl = this.config.get<string>("TELEPHONY_WORKER_URL", "http://localhost:3008");
+    const sharedSecret = this.config.get<string>("TELEPHONY_WORKER_SECRET", "");
+    try {
+      const res = await fetch(
+        `${workerUrl.replace(/\/$/, "")}/worker/extensions?tenantId=${encodeURIComponent(tenantId)}`,
+        { headers: { "X-Worker-Secret": sharedSecret } },
+      );
+      if (!res.ok) return [];
+      const data = (await res.json()) as { extensions?: string[] };
+      return Array.isArray(data.extensions) ? data.extensions : [];
+    } catch (err) {
+      this.logger.warn(`Could not fetch PBX extensions: ${(err as Error).message}`);
+      return [];
+    }
+  }
+
   // ===== Listing =====
 
   listByCard(cardId: string) {
