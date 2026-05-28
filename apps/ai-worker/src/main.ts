@@ -22,6 +22,8 @@ function buildSttAdapter(): SttAdapter {
     return new WhisperSttAdapter({
       apiKey: process.env.OPENAI_API_KEY ?? "",
       baseUrl: process.env.OPENAI_BASE_URL,
+      // Transcription model — NOT OPENAI_MODEL (that's the chat model).
+      model: process.env.OPENAI_STT_MODEL,
     });
   }
   return new MockSttAdapter();
@@ -32,7 +34,7 @@ function buildLlmAdapter(): LlmAdapter {
   if (provider === "claude") {
     return new ClaudeLlmAdapter({
       apiKey: process.env.ANTHROPIC_API_KEY ?? "",
-      model: process.env.LLM_MODEL,
+      model: process.env.ANTHROPIC_MODEL ?? process.env.LLM_MODEL,
     });
   }
   return new MockLlmAdapter();
