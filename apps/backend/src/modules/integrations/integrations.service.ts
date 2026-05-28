@@ -5,6 +5,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from "@nestjs/common";
+import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { ClsService } from "nestjs-cls";
 import { IntegrationStatus, IntegrationType } from "@acoustic-crm/shared";
@@ -101,7 +102,48 @@ export class IntegrationsService {
       where: { tenantId, type, deletedAt: null },
     });
     if (!row) return null;
-    return this.decryptConfig(row.config as StoredConfig);
+    const cfg = this.decryptConfig(row.config as StoredConfig);
+    // The provider can live on the row column; surface it so callers don't
+    // have to read the row separately.
+    if (row.provider && cfg.provider == null) cfg.provider = row.provider;
+    return cfg;
+  }
+
+  /**
+   * Cross-tenant list of decrypted FreePBX/AMI configs for the telephony
+   * worker. Bypasses tenant scoping on purpose — the worker maintains one AMI
+   * connection per tenant. Only reachable through the worker-secret guard.
+   * Each entry carries a fingerprint so the worker can detect credential
+   * changes and reconnect.
+   */
+  async listFreePbxConfigsForWorker(): Promise<
+    Array<{
+      tenantId: string;
+      host: string;
+      port: number;
+      username: string;
+      secret: string;
+      fingerprint: string;
+    }>
+  > {
+    const rows = await this.prisma.integration.findMany({
+      where: { type: IntegrationType.FREEPBX, deletedAt: null },
+    });
+    const configs = [];
+    for (const row of rows) {
+      const cfg = this.decryptConfig(row.config as StoredConfig);
+      const host = String(cfg.amiHost ?? "").trim();
+      const username = String(cfg.amiUsername ?? "").trim();
+      const secret = String(cfg.amiSecret ?? "");
+      if (!host || !username || !secret) continue;
+      const port = Number(cfg.amiPort ?? 5038) || 5038;
+      const fingerprint = createHash("sha256")
+        .update(`${host}|${port}|${username}|${secret}`)
+        .digest("hex")
+        .slice(0, 16);
+      configs.push({ tenantId: row.tenantId, host, port, username, secret, fingerprint });
+    }
+    return configs;
   }
 
   // ===== Upsert (encrypt secrets) =====

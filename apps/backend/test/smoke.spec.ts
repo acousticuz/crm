@@ -7,6 +7,7 @@ import { CallDirection, CallStatus, UserRole, SmsStatus } from "@acoustic-crm/sh
 import { PrismaService } from "../src/modules/prisma/prisma.service";
 import { RealtimeService } from "../src/modules/realtime/realtime.service";
 import { AuditService } from "../src/modules/audit/audit.service";
+import { IntegrationsService } from "../src/modules/integrations/integrations.service";
 import { CallsService } from "../src/modules/calls/calls.service";
 import { TranscriptsService } from "../src/modules/transcripts/transcripts.service";
 import { QaService } from "../src/modules/qa/qa.service";
@@ -75,6 +76,7 @@ describe("M11 — Full pipeline smoke test", () => {
         PrismaService,
         RealtimeService,
         AuditService,
+        IntegrationsService,
         CallsService,
         TranscriptsService,
         QaService,

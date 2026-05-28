@@ -5,6 +5,8 @@ import { ClsModule, ClsService } from "nestjs-cls";
 import { UserRole, SmsStatus } from "@acoustic-crm/shared";
 import { PrismaService } from "../src/modules/prisma/prisma.service";
 import { RealtimeService } from "../src/modules/realtime/realtime.service";
+import { AuditService } from "../src/modules/audit/audit.service";
+import { IntegrationsService } from "../src/modules/integrations/integrations.service";
 import { TriggersService } from "../src/modules/triggers/triggers.service";
 import { TriggerEngine } from "../src/modules/triggers/trigger.engine";
 import { SmsService, TooManyRequestsException } from "../src/modules/sms/sms.service";
@@ -45,6 +47,8 @@ describe("M5 — SMS adapters, templates, rate limit, trigger action", () => {
       providers: [
         PrismaService,
         RealtimeService,
+        AuditService,
+        IntegrationsService,
         TriggersService,
         TriggerEngine,
         SmsService,

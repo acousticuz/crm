@@ -9,11 +9,12 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { ClsService } from "nestjs-cls";
-import { SOCKET_EVENTS, SmsStatus } from "@acoustic-crm/shared";
+import { SOCKET_EVENTS, SmsStatus, IntegrationType } from "@acoustic-crm/shared";
 import { readContext } from "../../common/tenant-context";
 import { normalizePhone } from "../../common/phone";
 import { PrismaService } from "../prisma/prisma.service";
 import { RealtimeService } from "../realtime/realtime.service";
+import { IntegrationsService } from "../integrations/integrations.service";
 import { TriggerEngine } from "../triggers/trigger.engine";
 import { SmsAdapterFactory } from "./sms-adapter.factory";
 import { SmsRateLimiter } from "./rate-limiter";
@@ -39,6 +40,28 @@ function toShared(s: string): SmsStatus {
   return s as SmsStatus;
 }
 
+/**
+ * Integration SMS config uses generic field names (login, password, apiKey,
+ * sender). Each provider adapter expects its own names — translate here so the
+ * saved credentials reach the right adapter fields.
+ */
+function mapSmsConfigToAdapter(
+  provider: string,
+  cfg: Record<string, unknown>,
+): Record<string, unknown> {
+  const login = cfg.login != null ? String(cfg.login) : undefined;
+  const password = cfg.password != null ? String(cfg.password) : undefined;
+  const apiKey = cfg.apiKey != null ? String(cfg.apiKey) : undefined;
+  const sender = cfg.sender != null ? String(cfg.sender) : undefined;
+  if (provider === "eskiz") {
+    return { ...cfg, email: login, password, token: apiKey, from: sender };
+  }
+  if (provider === "playmobile") {
+    return { ...cfg, login, password, originator: sender };
+  }
+  return { ...cfg };
+}
+
 @Injectable()
 export class SmsService implements OnModuleInit {
   constructor(
@@ -48,7 +71,29 @@ export class SmsService implements OnModuleInit {
     private readonly adapters: SmsAdapterFactory,
     private readonly limiter: SmsRateLimiter,
     private readonly engine: TriggerEngine,
+    private readonly integrations: IntegrationsService,
   ) {}
+
+  /**
+   * Resolve the provider + credentials this tenant should send with. Prefers
+   * the saved SMS Integration row (decrypted); falls back to the legacy
+   * Tenant.smsConfig only when no Integration is configured.
+   */
+  private async resolveSmsConfig(
+    tenantId: string,
+  ): Promise<{ provider: string | undefined; config: Record<string, unknown> }> {
+    const integ = await this.integrations.getDecryptedConfig(tenantId, IntegrationType.SMS);
+    if (integ) {
+      const provider = integ.provider != null ? String(integ.provider) : undefined;
+      return { provider, config: mapSmsConfigToAdapter(provider ?? "", integ) };
+    }
+    const tenant = await this.prisma.tenant.findFirst({
+      where: { id: tenantId, deletedAt: null },
+      select: { smsConfig: true },
+    });
+    const cfg = (tenant?.smsConfig as TenantSmsConfig | null) ?? {};
+    return { provider: cfg.provider, config: cfg as Record<string, unknown> };
+  }
 
   /**
    * Register ourselves with the trigger engine so the `sms` trigger action
@@ -214,12 +259,8 @@ export class SmsService implements OnModuleInit {
         "SMS rate limit reached for this phone number; try again shortly",
       );
     }
-    const tenant = await this.prisma.tenant.findFirst({
-      where: { id: input.tenantId, deletedAt: null },
-      select: { smsConfig: true },
-    });
-    const config = (tenant?.smsConfig as TenantSmsConfig | null) ?? {};
-    const adapter = this.adapters.pick(config.provider);
+    const { provider, config } = await this.resolveSmsConfig(input.tenantId);
+    const adapter = this.adapters.pick(provider);
 
     // Insert as QUEUED first so we always have a record even if the adapter
     // crashes the process partway.

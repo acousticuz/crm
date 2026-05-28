@@ -8,6 +8,7 @@ import { PrismaService } from "../src/modules/prisma/prisma.service";
 import { RealtimeService } from "../src/modules/realtime/realtime.service";
 import { AuditService } from "../src/modules/audit/audit.service";
 import { InboxService } from "../src/modules/inbox/inbox.service";
+import { IntegrationsService } from "../src/modules/integrations/integrations.service";
 import { detectSensitiveCategories } from "../src/modules/inbox/sensitivity";
 import { writeContext } from "../src/common/tenant-context";
 
@@ -29,7 +30,7 @@ describe("M10 — Omnichannel inbox + AI draft + safety guardrails", () => {
         ClsModule.forRoot({ global: true }),
         EventEmitterModule.forRoot({ wildcard: true }),
       ],
-      providers: [PrismaService, RealtimeService, AuditService, InboxService],
+      providers: [PrismaService, RealtimeService, AuditService, IntegrationsService, InboxService],
     }).compile();
     await moduleRef.init();
 

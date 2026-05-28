@@ -38,7 +38,18 @@ interface SmsAction {
   templateId?: string;
   text?: string;
 }
-type TriggerAction = MoveCardAction | AddTagAction | RemoveTagAction | CreateTaskAction | SmsAction;
+interface TelegramAction {
+  type: "telegram";
+  text: string;
+  chatId?: string;
+}
+type TriggerAction =
+  | MoveCardAction
+  | AddTagAction
+  | RemoveTagAction
+  | CreateTaskAction
+  | SmsAction
+  | TelegramAction;
 
 /**
  * Optional callbacks injected by other modules. SmsModule registers a handler
@@ -54,10 +65,20 @@ export interface SmsTriggerHandler {
   }): Promise<unknown>;
 }
 
+/**
+ * Telegram notifier callback, registered by IntegrationsModule's
+ * TelegramNotifierService so the `telegram` trigger action can send without a
+ * circular import.
+ */
+export interface TelegramTriggerHandler {
+  notify(input: { tenantId: string; text: string; chatId?: string }): Promise<unknown>;
+}
+
 @Injectable()
 export class TriggerEngine {
   private readonly logger = new Logger(TriggerEngine.name);
   private smsHandler: SmsTriggerHandler | null = null;
+  private telegramHandler: TelegramTriggerHandler | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -71,6 +92,11 @@ export class TriggerEngine {
    */
   registerSmsHandler(handler: SmsTriggerHandler): void {
     this.smsHandler = handler;
+  }
+
+  /** TelegramNotifierService (IntegrationsModule) registers itself on init. */
+  registerTelegramHandler(handler: TelegramTriggerHandler): void {
+    this.telegramHandler = handler;
   }
 
   // ===== Event handlers =====
@@ -282,6 +308,18 @@ export class TriggerEngine {
           contactId: ctx.contactId,
           templateId: action.templateId,
           text: action.text,
+        });
+        return;
+      }
+      case "telegram": {
+        if (!this.telegramHandler) {
+          this.logger.warn("Telegram action skipped — TelegramNotifier not registered");
+          return;
+        }
+        await this.telegramHandler.notify({
+          tenantId: ctx.tenantId,
+          text: action.text,
+          chatId: action.chatId,
         });
         return;
       }

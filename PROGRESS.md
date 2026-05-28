@@ -1,8 +1,8 @@
 # PROGRESS
 
 ## Holat
-- **Asosiy 11 milestone + Settings + Call-fixes modullari tugatildi** 🎉
-- Joriy ish: **Call-log / Noma'lum raqam / Sozlanadigan Kanban** (CALL_FIXES_MODULE.md) — WebRTC'siz
+- **Asosiy 11 milestone + Settings + Call-fixes + Integration-runtime wiring tugatildi** 🎉
+- Joriy ish: **Saqlangan Integration konfiguratsiyasini runtime'ga ulash** (Settings endi xulqni boshqaradi)
 - Status: **done**
 - Repo: https://github.com/acousticuz/crm
 
@@ -11,6 +11,20 @@
 - [x] **Settings + Integrations** — sozlamalar + integratsiyalar (AES-256-GCM)
 - [x] **Call-fixes** — qo'ng'iroq jurnali + noma'lum raqam + sozlanadigan Kanban
 - [x] **Lint** — barcha workspace'larda real ESLint (flat `eslint.config.mjs`, typescript-eslint). `pnpm lint` 0 xato/0 ogohlantirish bilan o'tadi.
+- [x] **Integration-runtime** — saqlangan Integration konfiguratsiyasi runtime'da ishlatiladi (quyiga qara).
+
+## Integration-runtime wiring (Settings endi xulqni boshqaradi)
+- [x] **SMS** — `SmsService.deliver` endi avval SMS Integration'ni (shifrlangan) o'qiydi, provayder + kredensiallarni undan oladi; Integration bo'lmasa `Tenant.smsConfig`'ga qaytadi (fallback). Generic maydonlar (login/password/apiKey/sender) provayderga mos nomlarga map qilinadi (eskiz→email/from/token, playmobile→originator).
+- [x] **Telefoniya worker** — backend'da `GET /internal/telephony/freepbx` (worker-secret guard) har tenantning shifrlangan AMI konfiguratsiyasini `fingerprint` bilan qaytaradi. Worker'da `TenantAmiManager` har tenant uchun AMI ulanishini boshqaradi, Integration o'zgarsa (fingerprint farqlasa) qayta ulanadi; `env AMI_*` faqat backend bo'sh/yetib bo'lmaganda fallback. Originate endi tenant bo'yicha to'g'ri AMI'ga yo'naltiriladi.
+- [x] **Telegram** — `telegram` trigger action qo'shildi; `TelegramNotifierService` TELEGRAM Integration'dan botToken+chatId'ni o'qiydi.
+- [x] **Inbox** — `approveDraft` va `sendManual` endi INBOX Integration'ning `pageAccessToken`'i bilan Graph API orqali real yuboradi (token bo'lmasa soft-skip, yozuv baribir SENT).
+- [x] **Yangi env**: `AMI_SYNC_INTERVAL_MS` (default 30000) — worker config'ni qayta so'rash oralig'i.
+
+### Verification
+- [x] `pnpm build` — 5 paket xatosiz.
+- [x] `pnpm test` — backend **84/84** (yangi `integrations-runtime.spec` — SMS/Telegram/Inbox/FreePBX uchun "Integration yangilanishi kredensiallarni o'zgartiradi" isboti), worker **4/4** (`TenantAmiManager` reconnect testi).
+- [x] `pnpm lint` — 0 xato/0 ogohlantirish.
+- [x] commit `fix(integrations): use saved Integration config at runtime` + push.
 
 ## Call-fixes moduli (CALL_FIXES_MODULE.md) — WebRTC YO'Q
 ### 1. Har bir qo'ng'iroq saqlanadi (MISSED/BUSY/FAILED ham)

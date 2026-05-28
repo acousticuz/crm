@@ -7,11 +7,12 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { ClsService } from "nestjs-cls";
-import { UserRole } from "@acoustic-crm/shared";
+import { UserRole, IntegrationType } from "@acoustic-crm/shared";
 import { readContext } from "../../common/tenant-context";
 import { normalizePhone } from "../../common/phone";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
+import { IntegrationsService } from "../integrations/integrations.service";
 import { detectSensitiveCategories } from "./sensitivity";
 import {
   ApproveDraftDto,
@@ -51,7 +52,52 @@ export class InboxService {
     private readonly prisma: PrismaService,
     private readonly cls: ClsService,
     private readonly audit: AuditService,
+    private readonly integrations: IntegrationsService,
   ) {}
+
+  /** Decrypted page access token from the tenant's saved INBOX Integration. */
+  async resolveInboxToken(tenantId: string): Promise<string | null> {
+    const cfg = await this.integrations.getDecryptedConfig(tenantId, IntegrationType.INBOX);
+    const token = cfg ? String(cfg.pageAccessToken ?? "") : "";
+    return token || null;
+  }
+
+  /**
+   * Deliver an outbound message to the social channel via the Graph API using
+   * the tenant's saved INBOX integration. Fails soft (returns null) when no
+   * integration is configured — the message is still recorded as SENT so the
+   * lifecycle stays queryable.
+   */
+  private async dispatchToChannel(
+    tenantId: string,
+    thread: { channel: string; externalThreadId: string | null },
+    text: string,
+  ): Promise<string | null> {
+    if (!thread.externalThreadId) return null;
+    const token = await this.resolveInboxToken(tenantId);
+    if (!token) {
+      this.logger.debug?.(`Inbox send skipped — no INBOX integration for tenant ${tenantId}`);
+      return null;
+    }
+    try {
+      const res = await fetch(
+        `https://graph.facebook.com/v19.0/me/messages?access_token=${encodeURIComponent(token)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            recipient: { id: thread.externalThreadId },
+            message: { text },
+          }),
+        },
+      );
+      const json = (await res.json().catch(() => ({}))) as { message_id?: string };
+      return json.message_id ?? null;
+    } catch (err) {
+      this.logger.error(`Inbox send failed: ${(err as Error).message}`);
+      return null;
+    }
+  }
 
   private requireUser(): { userId: string; tenantId: string; role: UserRole } {
     const ctx = readContext(this.cls);
@@ -223,6 +269,12 @@ export class InboxService {
     // Sensitive content can be sent — but only by a human, never auto.
     // Re-detect after the operator's edit so re-introduced terms re-flag.
     const stillSensitive = detectSensitiveCategories(finalText);
+    const thread = await this.prisma.inboxThread.findFirst({
+      where: { id: msg.threadId, tenantId },
+    });
+    const externalMessageId = thread
+      ? await this.dispatchToChannel(tenantId, thread, finalText)
+      : null;
     const sent = await this.prisma.inboxMessage.update({
       where: { id: msg.id },
       data: {
@@ -231,6 +283,7 @@ export class InboxService {
         sentAt: new Date(),
         approvedBy: userId,
         sensitiveCategories: stillSensitive,
+        externalMessageId,
       },
     });
     await this.audit.log({
@@ -289,6 +342,7 @@ export class InboxService {
     });
     if (!thread) throw new NotFoundException("Thread not found");
     const sensitive = detectSensitiveCategories(dto.text);
+    const externalMessageId = await this.dispatchToChannel(tenantId, thread, dto.text);
     const msg = await this.prisma.inboxMessage.create({
       data: {
         tenantId,
@@ -300,6 +354,7 @@ export class InboxService {
         sentAt: new Date(),
         sensitiveCategories: sensitive,
         approvedBy: userId,
+        externalMessageId,
       },
     });
     await this.prisma.inboxThread.update({

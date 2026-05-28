@@ -54,6 +54,18 @@ export class CallsController {
     return this.calls.completed(dto);
   }
 
+  /**
+   * The telephony worker polls this for each tenant's saved FreePBX/AMI
+   * credentials (decrypted) so it can open one AMI connection per tenant and
+   * reconnect when an admin changes the Integration in Settings.
+   */
+  @Public()
+  @UseGuards(WorkerGuard)
+  @Get("internal/telephony/freepbx")
+  freePbxConfigs() {
+    return this.calls.freePbxConfigsForWorker();
+  }
+
   // ===== Operator endpoints =====
 
   @UseGuards(JwtAuthGuard, RolesGuard)

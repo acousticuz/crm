@@ -11,11 +11,15 @@ import type { SmsAdapter, SmsSendInput, SmsSendResult } from "./sms-adapter";
 export class MockSmsAdapter implements SmsAdapter {
   readonly name = "mock";
   readonly sent: Array<{ phone: string; text: string; id: string }> = [];
+  // Last provider config received — lets tests assert which credentials the
+  // service resolved (e.g. from the SMS Integration row).
+  lastConfig: Record<string, unknown> | null = null;
   private readonly logger = new Logger(MockSmsAdapter.name);
   private counter = 0;
 
-  async send(input: SmsSendInput): Promise<SmsSendResult> {
+  async send(input: SmsSendInput, cfg?: Record<string, unknown>): Promise<SmsSendResult> {
     this.counter += 1;
+    this.lastConfig = cfg ?? null;
     const id = `mock-${Date.now()}-${this.counter}`;
     this.sent.push({ phone: input.phone, text: input.text, id });
     this.logger.debug?.(`MOCK SMS → ${input.phone}: ${input.text}`);
@@ -25,5 +29,6 @@ export class MockSmsAdapter implements SmsAdapter {
   reset(): void {
     this.sent.length = 0;
     this.counter = 0;
+    this.lastConfig = null;
   }
 }

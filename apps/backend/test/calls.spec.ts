@@ -6,6 +6,8 @@ import { ClsModule, ClsService } from "nestjs-cls";
 import { CallDirection, CallStatus, UserRole } from "@acoustic-crm/shared";
 import { PrismaService } from "../src/modules/prisma/prisma.service";
 import { RealtimeService } from "../src/modules/realtime/realtime.service";
+import { AuditService } from "../src/modules/audit/audit.service";
+import { IntegrationsService } from "../src/modules/integrations/integrations.service";
 import { CallsService } from "../src/modules/calls/calls.service";
 import { MockAmiClient } from "../../telephony-worker/src/ami/mock.ami";
 import { writeContext } from "../src/common/tenant-context";
@@ -32,7 +34,7 @@ describe("M6 — Calls (AMI mock + inbound + MISSED + tenant isolation)", () => 
         ClsModule.forRoot({ global: true }),
         EventEmitterModule.forRoot({ wildcard: true }),
       ],
-      providers: [PrismaService, RealtimeService, CallsService],
+      providers: [PrismaService, RealtimeService, AuditService, IntegrationsService, CallsService],
     }).compile();
     await moduleRef.init();
 

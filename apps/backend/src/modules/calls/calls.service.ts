@@ -18,6 +18,7 @@ import { readContext } from "../../common/tenant-context";
 import { normalizePhone, tryNormalizePhone } from "../../common/phone";
 import { PrismaService } from "../prisma/prisma.service";
 import { RealtimeService } from "../realtime/realtime.service";
+import { IntegrationsService } from "../integrations/integrations.service";
 import {
   CallCompletedDto,
   CallIncomingDto,
@@ -34,7 +35,16 @@ export class CallsService {
     private readonly cls: ClsService,
     private readonly realtime: RealtimeService,
     private readonly config: ConfigService,
+    private readonly integrations: IntegrationsService,
   ) {}
+
+  /**
+   * Cross-tenant decrypted FreePBX/AMI configs for the telephony worker to
+   * connect with. Only reachable via the worker-secret guard.
+   */
+  freePbxConfigsForWorker() {
+    return this.integrations.listFreePbxConfigsForWorker();
+  }
 
   private currentUser(): { tenantId: string; userId: string | null; role: UserRole | null } {
     const ctx = readContext(this.cls);

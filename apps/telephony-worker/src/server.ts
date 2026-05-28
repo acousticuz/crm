@@ -5,7 +5,10 @@ import type { AmiClient } from "./ami/ami-client";
 interface ServerOpts {
   port: number;
   sharedSecret: string;
-  ami: AmiClient;
+  /** Resolve the AMI client for a tenant (undefined if none connected). */
+  resolveClient: (tenantId: string) => AmiClient | undefined;
+  /** Describe the current connection state for the health endpoint/logs. */
+  describe: () => { mode: string; tenants: number };
 }
 
 /**
@@ -18,7 +21,13 @@ export function startWorkerServer(opts: ServerOpts): () => void {
   app.use(express.json({ limit: "1mb" }));
 
   app.get("/worker/health", (_req: Request, res: Response) => {
-    res.json({ status: "ok", ami: opts.ami.name, uptimeSeconds: Math.floor(process.uptime()) });
+    const state = opts.describe();
+    res.json({
+      status: "ok",
+      mode: state.mode,
+      tenants: state.tenants,
+      uptimeSeconds: Math.floor(process.uptime()),
+    });
   });
 
   app.post("/worker/originate", async (req: Request, res: Response) => {
@@ -39,8 +48,13 @@ export function startWorkerServer(opts: ServerOpts): () => void {
       res.status(400).json({ error: "Missing required fields" });
       return;
     }
+    const client = opts.resolveClient(body.tenantId);
+    if (!client) {
+      res.status(503).json({ error: "No AMI connection for this tenant" });
+      return;
+    }
     try {
-      await opts.ami.originate({
+      await client.originate({
         tenantId: body.tenantId,
         cdrUniqueId: body.cdrUniqueId,
         operatorId: body.operatorId,
@@ -55,7 +69,10 @@ export function startWorkerServer(opts: ServerOpts): () => void {
   });
 
   const server = app.listen(opts.port, () => {
-    console.log(`telephony-worker listening on :${opts.port} (ami=${opts.ami.name})`);
+    const state = opts.describe();
+    console.log(
+      `telephony-worker listening on :${opts.port} (mode=${state.mode}, tenants=${state.tenants})`,
+    );
   });
 
   return () => server.close();
