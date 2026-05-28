@@ -36,15 +36,18 @@ export class WhisperSttAdapter implements SttAdapter {
     }
     const baseUrl = (this.config.baseUrl ?? "https://api.openai.com/v1").replace(/\/$/, "");
     const model = this.config.model ?? "whisper-1";
+    // gpt-4o-transcribe / gpt-4o-mini-transcribe only support response_format
+    // "json"/"text" (no verbose_json, no segment timestamps). whisper-1 gives
+    // verbose_json with segments.
+    const isGpt4o = model.startsWith("gpt-4o");
     const buf = await readFile(req.audioUrl);
 
     const form = new FormData();
     form.append("file", new Blob([buf], { type: "audio/wav" }), "audio.wav");
     form.append("model", model);
-    form.append("response_format", "verbose_json");
-    // Don't pass `language` — OpenAI rejects some ISO codes (e.g. "uz"), and
-    // Whisper auto-detects Uzbek/Russian fine. We map the detected language
-    // from the response instead.
+    form.append("response_format", isGpt4o ? "json" : "verbose_json");
+    // Don't pass `language` — OpenAI rejects some ISO codes (e.g. "uz"); the
+    // models auto-detect. We map the detected language from the response.
 
     const res = await fetch(`${baseUrl}/audio/transcriptions`, {
       method: "POST",
@@ -53,9 +56,21 @@ export class WhisperSttAdapter implements SttAdapter {
     });
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
-      throw new Error(`Whisper HTTP ${res.status}: ${errText.slice(0, 200)}`);
+      throw new Error(`OpenAI STT HTTP ${res.status}: ${errText.slice(0, 200)}`);
     }
     const json = (await res.json()) as WhisperVerboseResponse;
+    const text = (json.text ?? "").trim();
+
+    if (isGpt4o) {
+      // No timestamps/language from the gpt-4o transcription models — one
+      // segment with the full text; language falls back to the call hint.
+      return {
+        text,
+        segments: text ? [{ speaker: "unknown", start: 0, end: 0, text }] : [],
+        language: mapLanguage(req.language),
+        confidence: 0.9,
+      };
+    }
 
     const segments: TranscriptSegment[] = (json.segments ?? []).map((s) => ({
       speaker: "unknown",
@@ -68,11 +83,6 @@ export class WhisperSttAdapter implements SttAdapter {
       ? Math.max(0, Math.min(1, 1 - noSpeech.reduce((a, b) => a + b, 0) / noSpeech.length))
       : 0.9;
 
-    return {
-      text: (json.text ?? "").trim(),
-      segments,
-      language: mapLanguage(json.language),
-      confidence,
-    };
+    return { text, segments, language: mapLanguage(json.language), confidence };
   }
 }
