@@ -24,7 +24,7 @@ function buildSttAdapter(): SttAdapter {
       baseUrl: process.env.OPENAI_BASE_URL,
       // Transcription model — NOT OPENAI_MODEL (that's the chat model).
       model: process.env.OPENAI_STT_MODEL,
-      language: process.env.OPENAI_STT_LANGUAGE,
+      prompt: process.env.OPENAI_STT_PROMPT,
     });
   }
   return new MockSttAdapter();

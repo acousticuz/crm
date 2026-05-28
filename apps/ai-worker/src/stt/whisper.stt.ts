@@ -36,7 +36,7 @@ export class WhisperSttAdapter implements SttAdapter {
   readonly name = "whisper";
 
   constructor(
-    private readonly config: { apiKey: string; baseUrl?: string; model?: string; language?: string },
+    private readonly config: { apiKey: string; baseUrl?: string; model?: string; prompt?: string },
   ) {}
 
   async transcribe(req: SttRequest): Promise<SttTranscript> {
@@ -61,11 +61,11 @@ export class WhisperSttAdapter implements SttAdapter {
     // temperature=0 → deterministic, verbatim transcription with the least
     // hallucination (the model must not invent words on noisy/quiet audio).
     form.append("temperature", "0");
-    // Force the language when configured (OPENAI_STT_LANGUAGE) so the model
-    // doesn't mis-detect Uzbek as Kazakh/Azerbaijani. whisper-1 rejects "uz",
-    // so only send for the gpt-4o transcription models.
-    if (isGpt4o && this.config.language) {
-      form.append("language", this.config.language);
+    // OpenAI rejects language="uz", but a prompt biases the model toward the
+    // right language/vocabulary (it advises "add the language name to your
+    // prompt"). Configured via OPENAI_STT_PROMPT.
+    if (this.config.prompt) {
+      form.append("prompt", this.config.prompt);
     }
 
     const res = await fetch(`${baseUrl}/audio/transcriptions`, {
