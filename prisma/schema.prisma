@@ -141,6 +141,9 @@ model User {
   passwordHash  String
   role          UserRole   @default(OPERATOR)
   branchId      String?
+  // The operator's real PJSIP extension on the PBX (e.g. "101"). Used by
+  // click-to-call AMI Originate to ring the right device.
+  extension     String?
   status        UserStatus @default(ACTIVE)
   isOnline      Boolean    @default(false)
   lastSeenAt    DateTime?

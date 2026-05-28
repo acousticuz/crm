@@ -21,6 +21,7 @@ const PUBLIC_USER_SELECT = {
   email: true,
   role: true,
   branchId: true,
+  extension: true,
   status: true,
   isOnline: true,
   createdAt: true,
@@ -61,6 +62,7 @@ export class UsersService {
         passwordHash,
         role: dto.role,
         branchId: dto.branchId ?? null,
+        extension: dto.extension ?? null,
         status: "ACTIVE",
       },
       select: PUBLIC_USER_SELECT,
@@ -100,6 +102,8 @@ export class UsersService {
     if (dto.role !== undefined) data.role = dto.role;
     if (dto.status !== undefined) data.status = dto.status;
     if (dto.branchId !== undefined) data.branchId = dto.branchId;
+    // Empty string clears the extension (sets null).
+    if (dto.extension !== undefined) data.extension = dto.extension || null;
     if (dto.password) {
       data.passwordHash = await AuthService.hashPassword(dto.password);
     }

@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString, MaxLength, MinLength } from "class-validator";
+import { IsEnum, IsOptional, IsString, Matches, MaxLength, MinLength } from "class-validator";
 import { UserRole, UserStatus } from "@acoustic-crm/shared";
 
 export class UpdateUserDto {
@@ -24,4 +24,9 @@ export class UpdateUserDto {
   @IsOptional()
   @IsString()
   branchId?: string;
+
+  // Empty string clears the extension; otherwise 2–6 digits.
+  @IsOptional()
+  @Matches(/^(\d{2,6})?$/, { message: "extension must be 2–6 digits" })
+  extension?: string;
 }

@@ -1,4 +1,4 @@
-import { IsEmail, IsEnum, IsOptional, IsString, MaxLength, MinLength } from "class-validator";
+import { IsEmail, IsEnum, IsOptional, IsString, Matches, MaxLength, MinLength } from "class-validator";
 import { UserRole } from "@acoustic-crm/shared";
 
 // Tenant-admin can grant any role EXCEPT SUPER_ADMIN.
@@ -28,4 +28,9 @@ export class CreateUserDto {
   @IsOptional()
   @IsString()
   branchId?: string;
+
+  // Operator's PJSIP extension on the PBX — digits only (2–6 chars).
+  @IsOptional()
+  @Matches(/^\d{2,6}$/, { message: "extension must be 2–6 digits" })
+  extension?: string;
 }

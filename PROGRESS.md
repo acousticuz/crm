@@ -1,8 +1,8 @@
 # PROGRESS
 
 ## Holat
-- **Asosiy 11 milestone + Settings + Call-fixes + Integration-runtime wiring tugatildi** 🎉
-- Joriy ish: **Saqlangan Integration konfiguratsiyasini runtime'ga ulash** (Settings endi xulqni boshqaradi)
+- **Asosiy 11 milestone + Settings + Call-fixes + Integration-runtime + Operator-extension tugatildi** 🎉
+- Joriy ish: **Click-to-call'ni real PJSIP extension'ga bog'lash**
 - Status: **done**
 - Repo: https://github.com/acousticuz/crm
 
@@ -11,7 +11,22 @@
 - [x] **Settings + Integrations** — sozlamalar + integratsiyalar (AES-256-GCM)
 - [x] **Call-fixes** — qo'ng'iroq jurnali + noma'lum raqam + sozlanadigan Kanban
 - [x] **Lint** — barcha workspace'larda real ESLint (flat `eslint.config.mjs`, typescript-eslint). `pnpm lint` 0 xato/0 ogohlantirish bilan o'tadi.
-- [x] **Integration-runtime** — saqlangan Integration konfiguratsiyasi runtime'da ishlatiladi (quyiga qara).
+- [x] **Integration-runtime** — saqlangan Integration konfiguratsiyasi runtime'da ishlatiladi.
+- [x] **Operator-extension** — click-to-call operatorni real PJSIP extension'ga bog'laydi (quyiga qara).
+
+## Operator → PJSIP extension (click-to-call real FreePBX uchun)
+- [x] **User modeliga `extension` maydoni** qo'shildi (migration `user_extension`). Har operator o'z real PJSIP extension'iga (masalan "101") bog'lanadi.
+- [x] **AMI Originate** endi `fromExtension = user.extension` (yo'q bo'lsa fallback userId) — worker `PJSIP/{extension}`'ni jiringlatadi, ilgari `fromExtension = userId` edi.
+- [x] **DTO'lar** (`CreateUserDto`/`UpdateUserDto`) + `users.service` extension'ni qabul/saqlaydi (validatsiya: 2–6 raqam; bo'sh string tozalaydi). `PUBLIC_USER_SELECT`'ga qo'shildi.
+- [x] **Frontend** — Settings'da yangi **"Xodimlar"** tab (`UsersManager`): operatorlar ro'yxati + yaratish/tahrirlash/o'chirish, **PJSIP extension maydoni** bilan. `useUsers` hook (CRUD).
+- [x] **Test** — `calls.spec`: Originate operatorning PJSIP extension'i bilan chaqiriladi (userId emas) — `global.fetch` mock orqali tasdiqlangan.
+
+### Verification
+- [x] `pnpm build` — 5 paket xatosiz.
+- [x] `pnpm test` — backend **85/85**, worker **4/4**.
+- [x] `pnpm lint` — 0 xato/0 ogohlantirish.
+- [x] commit `fix(calls): map operator to real PJSIP extension for click-to-call` + push.
+- ⚠️ Frontend "Xodimlar" tab type-check + build'dan o'tdi, lekin brauzerda qo'lda bosib ko'rilmadi (to'liq stack+auth kerak).
 
 ## Integration-runtime wiring (Settings endi xulqni boshqaradi)
 - [x] **SMS** — `SmsService.deliver` endi avval SMS Integration'ni (shifrlangan) o'qiydi, provayder + kredensiallarni undan oladi; Integration bo'lmasa `Tenant.smsConfig`'ga qaytadi (fallback). Generic maydonlar (login/password/apiKey/sender) provayderga mos nomlarga map qilinadi (eskiz→email/from/token, playmobile→originator).

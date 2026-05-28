@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { PipelineEditor } from "@/components/settings/PipelineEditor";
+import { UsersManager } from "@/components/settings/UsersManager";
 import {
   useDisconnectIntegration,
   useIntegrations,
@@ -70,7 +71,7 @@ const TITLES: Record<IntegrationType, string> = {
   INBOX: "Omnichannel inbox (IG/FB)",
 };
 
-type SettingsTab = "integrations" | "pipelines";
+type SettingsTab = "integrations" | "pipelines" | "users";
 
 export function SettingsPage(): JSX.Element {
   const { user } = useAuth();
@@ -92,6 +93,7 @@ export function SettingsPage(): JSX.Element {
         {([
           { id: "integrations", label: "Integratsiyalar" },
           { id: "pipelines", label: "Voronkalar (Kanban)" },
+          { id: "users", label: "Xodimlar" },
         ] as Array<{ id: SettingsTab; label: string }>).map((t) => (
           <button
             key={t.id}
@@ -106,7 +108,13 @@ export function SettingsPage(): JSX.Element {
           </button>
         ))}
       </div>
-      {tab === "pipelines" ? <PipelineEditor /> : <IntegrationsTab />}
+      {tab === "pipelines" ? (
+        <PipelineEditor />
+      ) : tab === "users" ? (
+        <UsersManager />
+      ) : (
+        <IntegrationsTab />
+      )}
     </div>
   );
 }

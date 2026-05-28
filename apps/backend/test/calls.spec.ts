@@ -250,4 +250,31 @@ describe("M6 — Calls (AMI mock + inbound + MISSED + tenant isolation)", () => 
     expect(rows[0].status).toBe("FAILED");
     expect(rows[0].duration).toBe(31);
   });
+
+  it("click-to-call originates with the operator's PJSIP extension, not their user id", async () => {
+    // Operator is mapped to a real PBX extension.
+    await prisma.user.update({ where: { id: userId }, data: { extension: "101" } });
+
+    const captured: { body?: Record<string, unknown> } = {};
+    const fetchSpy = jest
+      .spyOn(global, "fetch")
+      .mockImplementation(async (_url: RequestInfo | URL, init?: RequestInit) => {
+        captured.body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return new Response(JSON.stringify({ queued: true }), { status: 202 });
+      });
+
+    try {
+      const res = await asTenant(tenantId, () =>
+        calls.originate({ toNumber: "+998901112233", cardId }),
+      );
+      expect(res.queued).toBe(true);
+      // The worker builds PJSIP/{fromExtension}; it must be the extension.
+      expect(captured.body?.fromExtension).toBe("101");
+      expect(captured.body?.fromExtension).not.toBe(userId);
+      // operatorId still carries the CRM user id for correlation.
+      expect(captured.body?.operatorId).toBe(userId);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
 });

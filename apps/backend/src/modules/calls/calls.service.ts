@@ -290,10 +290,14 @@ export class CallsService {
     );
     const sharedSecret = this.config.get<string>("TELEPHONY_WORKER_SECRET", "");
 
-    // Look up the operator's extension from User settings (placeholder for
-    // now — schema doesn't have an `extension` column on User. M11 admin
-    // settings will surface this per-operator. Fallback to operator ID).
-    const fromExtension = userId;
+    // Ring the operator's real PJSIP extension (set per-operator in user
+    // management). Fall back to the user id only if no extension is configured
+    // yet — that won't dial on a real PBX, but keeps dev/mock flows working.
+    const operator = await this.prisma.t.user.findFirst({
+      where: { id: userId, deletedAt: null },
+      select: { extension: true },
+    });
+    const fromExtension = operator?.extension || userId;
 
     // Pre-generate a CDR id we can correlate when the worker reports back.
     const cdrUniqueId = `out-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
