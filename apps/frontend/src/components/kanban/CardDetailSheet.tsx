@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { api } from "@/lib/api";
 import {
   useAttachTag,
   useCardDetail,
@@ -349,6 +350,23 @@ function CallRow({ call }: CallRowProps): JSX.Element {
   const [open, setOpen] = useState(false);
   const { data: sc, isLoading } = useScorecard(open ? call.id : null);
   const answered = call.status === "ANSWERED";
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [audioState, setAudioState] = useState<"idle" | "loading" | "none" | "error">("idle");
+
+  async function loadAudio() {
+    if (audioUrl) return;
+    setAudioState("loading");
+    try {
+      const res = await api.get(`/calls/${call.id}/recording`, { responseType: "blob" });
+      setAudioUrl(URL.createObjectURL(res.data as Blob));
+      setAudioState("idle");
+    } catch (e) {
+      setAudioState(
+        (e as { response?: { status?: number } }).response?.status === 404 ? "none" : "error",
+      );
+    }
+  }
+
   return (
     <li className="rounded border bg-card px-2 py-1">
       <div className="flex items-center justify-between gap-2">
@@ -359,6 +377,16 @@ function CallRow({ call }: CallRowProps): JSX.Element {
           <span className="text-xs text-muted-foreground">
             {format(new Date(call.startedAt), "dd MMM HH:mm")} · {call.duration}s
           </span>
+          {answered && !audioUrl && (
+            <button
+              type="button"
+              onClick={loadAudio}
+              disabled={audioState === "loading"}
+              className="text-xs text-primary hover:underline disabled:opacity-50"
+            >
+              {audioState === "loading" ? "..." : "🔊 Eshitish"}
+            </button>
+          )}
           {answered && (
             <button
               type="button"
@@ -370,6 +398,17 @@ function CallRow({ call }: CallRowProps): JSX.Element {
           )}
         </div>
       </div>
+      {audioUrl && (
+        <audio controls src={audioUrl} className="mt-2 h-8 w-full" autoPlay>
+          <track kind="captions" />
+        </audio>
+      )}
+      {audioState === "none" && (
+        <p className="mt-1 text-xs text-muted-foreground">Bu qo'ng'iroq uchun yozuv yo'q.</p>
+      )}
+      {audioState === "error" && (
+        <p className="mt-1 text-xs text-destructive">Yozuvni yuklab bo'lmadi.</p>
+      )}
       {open && (
         <div className="mt-2 space-y-2 border-t pt-2 text-xs">
           {isLoading && <p className="text-muted-foreground">Yuklanmoqda...</p>}

@@ -4,11 +4,16 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  NotFoundException,
   Param,
   Post,
   Query,
+  Res,
+  StreamableFile,
   UseGuards,
 } from "@nestjs/common";
+import { createReadStream } from "node:fs";
+import type { Response } from "express";
 import { UserRole } from "@acoustic-crm/shared";
 import { Public } from "../../common/decorators/public.decorator";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
@@ -95,6 +100,19 @@ export class CallsController {
     if (cardId) return this.calls.listByCard(cardId);
     if (contactId) return this.calls.listByContact(contactId);
     return [];
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.TENANT_ADMIN, UserRole.SUPERVISOR, UserRole.OPERATOR, UserRole.ANALYST)
+  @Get("calls/:id/recording")
+  async recording(
+    @Param("id") id: string,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const path = await this.calls.recordingPath(id);
+    if (!path) throw new NotFoundException("Recording not available for this call");
+    res.set({ "Content-Type": "audio/wav" });
+    return new StreamableFile(createReadStream(path));
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

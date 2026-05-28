@@ -8,6 +8,7 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { execFileSync } from "node:child_process";
 import type { Queue } from "bullmq";
 import { ClsService } from "nestjs-cls";
 import {
@@ -443,6 +444,31 @@ export class CallsService {
     } catch (err) {
       this.logger.warn(`Could not fetch PBX extensions: ${(err as Error).message}`);
       return [];
+    }
+  }
+
+  /**
+   * Resolve the local path of a call's recording (tenant-scoped). Recording
+   * filenames end with the Asterisk uniqueid (= cdrUniqueId) for inbound calls.
+   * Returns null when there's no recording (e.g. missed, or outbound whose id
+   * is CRM-generated). Used by the audio-playback endpoint.
+   */
+  async recordingPath(callId: string): Promise<string | null> {
+    this.currentUser();
+    const call = await this.prisma.t.call.findFirst({ where: { id: callId, deletedAt: null } });
+    if (!call) return null;
+    const dir = this.config.get<string>("RECORDINGS_DIR", "");
+    const uid = call.cdrUniqueId;
+    if (!dir || !uid || !/^[\d.]+$/.test(uid)) return null;
+    try {
+      const out = execFileSync(
+        "find",
+        [dir, "-name", `*${uid}.wav`, "-type", "f", "-size", "+1k"],
+        { encoding: "utf8", timeout: 10_000 },
+      ).trim();
+      return out.split("\n").filter(Boolean)[0] ?? null;
+    } catch {
+      return null;
     }
   }
 
