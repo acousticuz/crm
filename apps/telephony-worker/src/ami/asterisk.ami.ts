@@ -263,6 +263,9 @@ export class AsteriskAmiClient implements AmiClient {
         for (const [, p] of this.pending) {
           if (p.fromNumber === from && !p.answered) {
             this.pending.delete(p.cdrUniqueId);
+            // Adopt the Asterisk uniqueid as the call id so the recording file
+            // (named `out-...-{uniqueid}.wav`) can be matched, like inbound.
+            p.cdrUniqueId = uniqueId;
             this.pending.set(uniqueId, p);
             break;
           }
