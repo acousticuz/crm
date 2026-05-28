@@ -4,6 +4,7 @@ import { QUEUES } from "@acoustic-crm/shared";
 import { MockSttAdapter } from "./stt/mock.stt";
 import { WhisperSttAdapter } from "./stt/whisper.stt";
 import { GoogleSttAdapter } from "./stt/google.stt";
+import { GoogleChirpSttAdapter } from "./stt/google-chirp.stt";
 import type { SttAdapter } from "./stt/stt-adapter";
 import { MockLlmAdapter } from "./llm/mock.llm";
 import { ClaudeLlmAdapter } from "./llm/claude.llm";
@@ -19,6 +20,15 @@ import {
 
 function buildSttAdapter(): SttAdapter {
   const provider = process.env.STT_PROVIDER ?? "mock";
+  if (provider === "chirp") {
+    return new GoogleChirpSttAdapter({
+      keyPath: process.env.GOOGLE_APPLICATION_CREDENTIALS ?? "",
+      projectId: process.env.GOOGLE_PROJECT_ID ?? "",
+      region: process.env.GOOGLE_STT_REGION ?? "us-central1",
+      model: process.env.GOOGLE_CHIRP_MODEL ?? "chirp_2",
+      languageCode: process.env.GOOGLE_STT_LANGUAGE ?? "uz-UZ",
+    });
+  }
   if (provider === "google") {
     return new GoogleSttAdapter({
       apiKey: process.env.GOOGLE_STT_API_KEY ?? "",

@@ -45,3 +45,5 @@ apps/backend/node_modules/.prisma/
 
 # Docker volumes (if mounted locally)
 .docker/data/
+gcp-sa.json
+*.sa.json
