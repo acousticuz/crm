@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Inject, Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { SOCKET_EVENTS } from "@acoustic-crm/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { RealtimeService } from "../realtime/realtime.service";
+import { QaService } from "../qa/qa.service";
 import { WriteTranscriptDto } from "./dto/transcript.dto";
 
 @Injectable()
@@ -10,6 +11,7 @@ export class TranscriptsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
+    @Optional() @Inject(QaService) private readonly qa?: QaService,
   ) {}
 
   /**
@@ -46,6 +48,10 @@ export class TranscriptsService {
       callId: dto.callId,
       transcriptId: transcript.id,
     });
+    // Hand the call off to ai-worker's analysis queue (M8).
+    if (this.qa) {
+      await this.qa.enqueueAnalysis({ tenantId: dto.tenantId, callId: dto.callId });
+    }
     return transcript;
   }
 }

@@ -1,5 +1,11 @@
 import { Module } from "@nestjs/common";
+import { QaService } from "./qa.service";
+import { QaController } from "./qa.controller";
+import { WorkerGuard } from "../calls/worker.guard";
 
-// QA (quality scoring) module — implemented in M8.
-@Module({})
+@Module({
+  controllers: [QaController],
+  providers: [QaService, WorkerGuard],
+  exports: [QaService],
+})
 export class QaModule {}

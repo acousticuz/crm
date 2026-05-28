@@ -289,3 +289,31 @@ Ikkala yo'nalish ham `X-Worker-Secret` (shared `TELEPHONY_WORKER_SECRET` env) bi
 **Qaror:** `TranscriptsService.write` `prisma.transcript.upsert({ where: { callId }, ... })` — bir call uchun bir transcript. AI-worker retry/replay xavfsiz: oxirgi yozuv g'olib. Tenant cross-check: TranscriptsService write'dan oldin `call.tenantId === dto.tenantId` ekanligini tasdiqlaydi (worker tomonidagi misconfig'ga qarshi DiD).
 
 **Sabab:** Schema `Transcript.callId @unique` ekan, ikkala constraint birgalikda bizga "transcript = call'ning oxirgi STT chiqishi" semantikasini beradi. STT qayta ishlanishi (yaxshilangan adapter bilan) eski transcript'ni almashtiradi — versioning hozir kerak emas (M11 da audit log baholaydi).
+
+---
+
+## §38. LLM adapter + queue payload-carries-context — M8
+**Qaror:** `LlmAdapter` interfeysi `analyze(transcript)` va `grade(transcript, criteria)` ikki metodga ega. AI_ANALYSIS va QA BullMQ navbatlari **payload ichida transcript va criteria** bilan ishlatiladi — worker backend'dan qo'shimcha o'qish chaqirig'i qilmaydi.
+
+**Sabab:** Worker uchun backend'da read-endpoint qo'shish — bir nechta yangi guard/RBAC sirt. Payload kontekstli — pipeline atomic (transcript va criteria birga keladi), retry idempotent (payload o'zgarmaydi), HTTP roundtrip kamayadi. Trade-off: payload kattaroq (transcript bir necha KB) — Redis uchun sezilarli emas. Million qator bo'lsa o'lcham chegarasiga qaytib qaraymiz.
+
+---
+
+## §39. Mock LLM keyword-based grading — deterministik testlar — M8
+**Qaror:** `MockLlmAdapter.grade()` har mezon `keywords[]` array (yoki `text` ning long words) ni substring sifatida transcript segmentlarda izlaydi. Topsa → `passed=true, score=maxScore, evidence=segment qatori`. Topmasa → `passed=false, score=0`.
+
+**Sabab:** M8 talabi "barqaror, dalil bilan asoslangan natija". Real LLM stoxastik — testlar flaky bo'lishi mumkin. Mock keyword-grading ishonchli reproducible va prod'da bir xil JSON shape qaytaradi. M11 da Claude bilan parallel test'lar (snapshot tolerance) qo'shamiz. Keywords array Script.criteria DTO da optional — admin sets it through the UI when creating a rubric.
+
+---
+
+## §40. Prompts versioned in `prompts/` directory — M8
+**Qaror:** LLM promptlari `prompts/<purpose>.v<N>.md` formatida saqlanadi (markdown). `prompts/analysis.v1.md` va `prompts/qa-grade.v1.md` — JSON-only output sxemasi va xavfsizlik qoidalari (**tibbiy maslahat berma**) bilan. Real adapter `loadPrompt()` orqali o'qiydi.
+
+**Sabab:** Promptlar produktning core business logic'i. Markdown versiya — diff-readable, code review oson, version control bilan o'zgarishlar kuzatiladi. Yangi prompt versiyasi `.v2.md` deb qo'shiladi — eski versiya saqlanadi (rollback uchun). Adapter qaysi versiyani ishlatishi config'da belgilanadi.
+
+---
+
+## §41. QAScore upsert by (callId, scriptId) — manual lookup — M8
+**Qaror:** Schema'da `QAScore.@@unique([callId, scriptId])` constraint yo'q (CLAUDE.md §5.1'da kelishilgan). Service qatlamida `findFirst` + `update`/`create` orqali idempotent retry'ni qo'lda majburlanadi.
+
+**Sabab:** QAScore ko'p script bilan tirikan (har Script bir QAScore) — composite unique bo'lsa, future bir nechta script versiyalari uchun qiyinchilik bo'lardi. Manual lookup oddiy, audit trail ham ko'rinarli. Race condition risk — bir vaqtda ikki worker bir xil (callId, scriptId) ga yozsa, ikkala ham create — keyin admin bittasini o'chiradi. Hozircha bu yopilmagan (M11'da QAScore'ga unique constraint qo'shish ko'rib chiqiladi).
