@@ -83,11 +83,13 @@ export class AsteriskAmiClient implements AmiClient {
   private incomingHandlers: Array<(e: AmiCallEvent) => void | Promise<void>> = [];
   private completedHandlers: Array<(e: AmiCallCompleted) => void | Promise<void>> = [];
   private pending = new Map<string, PendingCall>();
-  // In-flight PJSIPShowEndpoints requests, keyed by ActionID.
-  private endpointRequests = new Map<
-    string,
-    { names: string[]; resolve: (names: string[]) => void; timer: ReturnType<typeof setTimeout> }
-  >();
+  // Single active PJSIPShowEndpoints collection. We don't key by ActionID
+  // because the asterisk-manager library rewrites our ActionID with its own,
+  // so we collect EndpointList events while a request is in flight instead.
+  private endpointCollector:
+    | { names: string[]; resolve: (names: string[]) => void; timer: ReturnType<typeof setTimeout> }
+    | null = null;
+  private endpointInFlight: Promise<string[]> | null = null;
 
   constructor(
     private readonly config: {
@@ -202,25 +204,27 @@ export class AsteriskAmiClient implements AmiClient {
     if (!this.ami) {
       throw new Error("AsteriskAmiClient.listExtensions: not connected");
     }
-    const actionId = `ext-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    // Single-flight: concurrent callers share one PBX query.
+    if (this.endpointInFlight) return this.endpointInFlight;
+    this.endpointInFlight = this.collectEndpoints().finally(() => {
+      this.endpointInFlight = null;
+    });
+    return this.endpointInFlight;
+  }
+
+  private collectEndpoints(): Promise<string[]> {
     return new Promise<string[]>((resolve) => {
-      const timer = setTimeout(() => {
-        const req = this.endpointRequests.get(actionId);
-        if (req) {
-          this.endpointRequests.delete(actionId);
-          resolve(req.names);
-        }
-      }, 5000);
-      this.endpointRequests.set(actionId, { names: [], resolve, timer });
-      this.ami!.action({ Action: "PJSIPShowEndpoints", ActionID: actionId }, (err) => {
-        if (err) {
-          const req = this.endpointRequests.get(actionId);
-          if (req) {
-            clearTimeout(req.timer);
-            this.endpointRequests.delete(actionId);
-          }
-          resolve([]);
-        }
+      const finish = () => {
+        if (!this.endpointCollector) return;
+        clearTimeout(this.endpointCollector.timer);
+        const names = this.endpointCollector.names;
+        this.endpointCollector = null;
+        resolve(names);
+      };
+      const timer = setTimeout(finish, 5000);
+      this.endpointCollector = { names: [], resolve: () => finish(), timer };
+      this.ami!.action({ Action: "PJSIPShowEndpoints" }, (err) => {
+        if (err) finish();
       });
     });
   }
@@ -231,19 +235,15 @@ export class AsteriskAmiClient implements AmiClient {
     const name = (evt.event ?? "").toLowerCase();
 
     // PJSIPShowEndpoints responses arrive as a stream of EndpointList events
-    // followed by EndpointListComplete, correlated by ActionID.
+    // followed by EndpointListComplete. Collect them into the active request.
     if (name === "endpointlist") {
-      const req = evt.actionid ? this.endpointRequests.get(evt.actionid) : undefined;
-      if (req && evt.objectname) req.names.push(evt.objectname);
+      if (this.endpointCollector && evt.objectname) {
+        this.endpointCollector.names.push(evt.objectname);
+      }
       return;
     }
     if (name === "endpointlistcomplete") {
-      const req = evt.actionid ? this.endpointRequests.get(evt.actionid) : undefined;
-      if (req) {
-        clearTimeout(req.timer);
-        this.endpointRequests.delete(evt.actionid!);
-        req.resolve(req.names);
-      }
+      this.endpointCollector?.resolve(this.endpointCollector.names);
       return;
     }
 
