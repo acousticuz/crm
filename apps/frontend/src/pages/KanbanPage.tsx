@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   PointerSensor,
@@ -46,6 +46,9 @@ export function KanbanPage(): JSX.Element {
   const { data: cardsPage } = useCards(filters);
   const moveCard = useMoveCard();
   const [openCardId, setOpenCardId] = useState<string | null>(null);
+  // Set while a drag is in progress so the post-drop click doesn't pop the
+  // detail sheet open.
+  const justDraggedRef = useRef(false);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   const cardsByStage = useMemo(() => {
@@ -58,6 +61,10 @@ export function KanbanPage(): JSX.Element {
   }, [cardsPage]);
 
   function onDragEnd(event: DragEndEvent) {
+    // Suppress the synthetic click that follows a drop for a moment.
+    setTimeout(() => {
+      justDraggedRef.current = false;
+    }, 50);
     const { active, over } = event;
     if (!over) return;
     const card = active.data.current?.card as CardListItem | undefined;
@@ -65,6 +72,11 @@ export function KanbanPage(): JSX.Element {
     if (!card) return;
     if (card.stageId === stageId) return;
     moveCard.mutate({ cardId: card.id, stageId });
+  }
+
+  function openCard(cardId: string) {
+    if (justDraggedRef.current) return;
+    setOpenCardId(cardId);
   }
 
   if (pipelinesLoading) {
@@ -89,14 +101,20 @@ export function KanbanPage(): JSX.Element {
         onChange={setFilters}
       />
 
-      <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+      <DndContext
+        sensors={sensors}
+        onDragStart={() => {
+          justDraggedRef.current = true;
+        }}
+        onDragEnd={onDragEnd}
+      >
         <div className="flex gap-3 overflow-x-auto pb-4">
           {pipeline?.stages.map((stage) => (
             <KanbanColumn
               key={stage.id}
               stage={stage}
               cards={cardsByStage.get(stage.id) ?? []}
-              onOpenCard={setOpenCardId}
+              onOpenCard={openCard}
             />
           ))}
         </div>

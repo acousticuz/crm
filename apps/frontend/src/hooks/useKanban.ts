@@ -68,7 +68,24 @@ export function useMoveCard() {
       const { data } = await api.patch(`/cards/${cardId}/move`, { stageId });
       return data;
     },
-    onSuccess: () => {
+    // Optimistically move the card to the target stage so the board updates
+    // instantly; reconcile (or roll back) once the server responds.
+    onMutate: async ({ cardId, stageId }) => {
+      await qc.cancelQueries({ queryKey: ["cards"] });
+      const prev = qc.getQueriesData<PageResult<CardListItem>>({ queryKey: ["cards"] });
+      for (const [key, data] of prev) {
+        if (!data) continue;
+        qc.setQueryData<PageResult<CardListItem>>(key, {
+          ...data,
+          items: data.items.map((c) => (c.id === cardId ? { ...c, stageId } : c)),
+        });
+      }
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      ctx?.prev?.forEach(([key, data]) => qc.setQueryData<PageResult<CardListItem>>(key, data));
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ["cards"] });
     },
   });

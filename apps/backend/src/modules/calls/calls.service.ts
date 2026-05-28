@@ -114,7 +114,7 @@ export class CallsService {
       contact.fullName && contact.fullName !== "Noma'lum"
         ? contact.fullName
         : (contact.phones[0] ?? "Yangi qo'ng'iroq");
-    return this.prisma.t.card.create({
+    const created = await this.prisma.t.card.create({
       data: {
         tenantId,
         pipelineId: pipeline.id,
@@ -125,6 +125,12 @@ export class CallsService {
         enteredStageAt: new Date(),
       },
     });
+    // Tell connected boards a new card appeared so it shows up live.
+    this.realtime.toTenant(tenantId, SOCKET_EVENTS.CARD_CREATED, {
+      cardId: created.id,
+      stageId: created.stageId,
+    });
+    return created;
   }
 
   /**
