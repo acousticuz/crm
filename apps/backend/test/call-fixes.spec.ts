@@ -209,6 +209,45 @@ describe("CALL_FIXES — missed calls saved, unknown→Noma'lum, configurable Ka
     expect(contact!.fullName).toBe("Noma'lum");
     expect(contact!.source).toBe("inbound_call");
     expect(contact!.phones).toContain(phone);
+
+    // The call must also surface on the Kanban board: a card is created in the
+    // default pipeline's first stage so the call is visible, not just stored.
+    expect(r.cardId).not.toBeNull();
+    const card = await asTenant(() => prisma.t.card.findFirst({ where: { id: r.cardId! } }));
+    expect(card!.contactId).toBe(r.contactId);
+    expect(card!.stageId).toBe(stageNewId);
+    expect(card!.status).toBe("OPEN");
+  });
+
+  it("repeat call from the same unknown number reuses the same card (no duplicate)", async () => {
+    const phone = "+998939992222";
+    const r1 = await asTenant(() =>
+      calls.started({
+        tenantId,
+        cdrUniqueId: `${runId}-card-dup1`,
+        direction: CallDirection.INBOUND,
+        fromNumber: phone,
+        toNumber: "+998000000000",
+      }),
+    );
+    const r2 = await asTenant(() =>
+      calls.completed({
+        tenantId,
+        cdrUniqueId: `${runId}-card-dup2`,
+        direction: CallDirection.INBOUND,
+        fromNumber: phone,
+        toNumber: "+998000000000",
+        status: CallStatus.ANSWERED,
+        startedAt: new Date().toISOString(),
+        duration: 12,
+      }),
+    );
+    expect(r1.cardId).not.toBeNull();
+    expect(r2.cardId).toBe(r1.cardId);
+    const cards = await asTenant(() =>
+      prisma.t.card.findMany({ where: { contactId: r1.contactId! } }),
+    );
+    expect(cards).toHaveLength(1);
   });
 
   it("repeat call from the same unknown number does NOT create a duplicate contact", async () => {
@@ -264,6 +303,12 @@ describe("CALL_FIXES — missed calls saved, unknown→Noma'lum, configurable Ka
   // ===== (3) Configurable Kanban — deleting a stage preserves cards =====
 
   it("deleting a stage moves its cards to another stage (never lost)", async () => {
+    // Isolate from cards auto-created by the earlier inbound-call tests (they
+    // land in the default first stage too). Soft-delete keeps Call FKs intact.
+    await prisma.card.updateMany({
+      where: { tenantId, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
     // Add a second stage and create cards in stageNew, then delete stageNew.
     const stageB = await asTenant(() =>
       pipelines.createStage(pipelineId, { name: "Bog'lanildi", order: 1, type: undefined as never }),

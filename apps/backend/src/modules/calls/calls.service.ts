@@ -89,6 +89,45 @@ export class CallsService {
   }
 
   /**
+   * Return the contact's open card, or CREATE one in the tenant's default
+   * pipeline's first stage so the call shows up on the Kanban board. Without
+   * this, inbound calls attach to a contact but never surface as a card.
+   * Idempotent: repeated calls from the same number reuse the open card.
+   */
+  private async openOrCreateCardFor(
+    tenantId: string,
+    contact: { id: string; fullName: string; phones: string[] },
+  ) {
+    const existing = await this.openCardFor(contact.id);
+    if (existing) return existing;
+    const pipeline = await this.prisma.t.pipeline.findFirst({
+      where: { deletedAt: null },
+      orderBy: [{ isDefault: "desc" }, { order: "asc" }],
+    });
+    if (!pipeline) return null;
+    const stage = await this.prisma.t.stage.findFirst({
+      where: { pipelineId: pipeline.id, deletedAt: null },
+      orderBy: { order: "asc" },
+    });
+    if (!stage) return null;
+    const title =
+      contact.fullName && contact.fullName !== "Noma'lum"
+        ? contact.fullName
+        : (contact.phones[0] ?? "Yangi qo'ng'iroq");
+    return this.prisma.t.card.create({
+      data: {
+        tenantId,
+        pipelineId: pipeline.id,
+        stageId: stage.id,
+        contactId: contact.id,
+        title,
+        status: "OPEN",
+        enteredStageAt: new Date(),
+      },
+    });
+  }
+
+  /**
    * Worker reports a channel has STARTED ringing. The Call row is created
    * immediately (status=RINGING) so a call is never lost even if it's never
    * answered — `completed` later updates the final status. Inbound calls from
@@ -114,7 +153,11 @@ export class CallsService {
       : await this.prisma.t.contact.findFirst({
           where: { phones: { has: tryNormalizePhone(customerRaw)! }, deletedAt: null },
         });
-    const card = contact ? await this.openCardFor(contact.id) : null;
+    const card = contact
+      ? isInbound
+        ? await this.openOrCreateCardFor(dto.tenantId, contact)
+        : await this.openCardFor(contact.id)
+      : null;
 
     const call = await this.prisma.t.call.upsert({
       where: {
@@ -197,7 +240,11 @@ export class CallsService {
             where: { phones: { has: tryNormalizePhone(customerRaw)! }, deletedAt: null },
           })
         : null;
-    const card = contact ? await this.openCardFor(contact.id) : null;
+    const card = contact
+      ? isInbound
+        ? await this.openOrCreateCardFor(dto.tenantId, contact)
+        : await this.openCardFor(contact.id)
+      : null;
 
     const call = await this.prisma.t.call.upsert({
       where: {
