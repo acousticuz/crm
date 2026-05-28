@@ -20,6 +20,7 @@ import { WorkerGuard } from "./worker.guard";
 import {
   CallCompletedDto,
   CallIncomingDto,
+  CallStartedDto,
   OriginateCallDto,
 } from "./dto/call.dto";
 
@@ -28,6 +29,14 @@ export class CallsController {
   constructor(private readonly calls: CallsService) {}
 
   // ===== Internal worker endpoints — guarded by shared secret, not JWT =====
+
+  @Public()
+  @UseGuards(WorkerGuard)
+  @Post("internal/calls/started")
+  @HttpCode(HttpStatus.OK)
+  started(@Body() dto: CallStartedDto) {
+    return this.calls.started(dto);
+  }
 
   @Public()
   @UseGuards(WorkerGuard)

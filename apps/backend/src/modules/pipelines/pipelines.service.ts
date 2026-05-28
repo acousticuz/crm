@@ -5,9 +5,10 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { ClsService } from "nestjs-cls";
-import { StageType } from "@acoustic-crm/shared";
+import { StageType, SOCKET_EVENTS } from "@acoustic-crm/shared";
 import { readContext } from "../../common/tenant-context";
 import { PrismaService } from "../prisma/prisma.service";
+import { RealtimeService } from "../realtime/realtime.service";
 import { CreatePipelineDto, UpdatePipelineDto } from "./dto/pipeline.dto";
 import { CreateStageDto, UpdateStageDto } from "./dto/stage.dto";
 
@@ -16,12 +17,19 @@ export class PipelinesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cls: ClsService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   private currentTenantId(): string {
     const tid = readContext(this.cls).tenantId;
     if (!tid) throw new UnauthorizedException("No tenant context");
     return tid;
+  }
+
+  /** Tell connected clients the pipeline layout changed so the Kanban board
+   * refetches. Best-effort — RealtimeService no-ops when no server is set. */
+  private emitChanged(tenantId: string): void {
+    this.realtime.toTenant(tenantId, SOCKET_EVENTS.PIPELINE_UPDATED, {});
   }
 
   // ===== Pipelines =====
@@ -35,7 +43,7 @@ export class PipelinesService {
         data: { isDefault: false },
       });
     }
-    return this.prisma.t.pipeline.create({
+    const created = await this.prisma.t.pipeline.create({
       data: {
         tenantId,
         name: dto.name,
@@ -43,6 +51,8 @@ export class PipelinesService {
         order,
       },
     });
+    this.emitChanged(tenantId);
+    return created;
   }
 
   listPipelines() {
@@ -77,7 +87,7 @@ export class PipelinesService {
         data: { isDefault: false },
       });
     }
-    return this.prisma.t.pipeline.update({
+    const updated = await this.prisma.t.pipeline.update({
       where: { id },
       data: {
         ...(dto.name !== undefined ? { name: dto.name } : {}),
@@ -85,6 +95,8 @@ export class PipelinesService {
         ...(dto.order !== undefined ? { order: dto.order } : {}),
       },
     });
+    this.emitChanged(this.currentTenantId());
+    return updated;
   }
 
   async deletePipeline(id: string): Promise<{ id: string }> {
@@ -102,6 +114,7 @@ export class PipelinesService {
       where: { id: pipeline.id },
       data: { deletedAt: new Date() },
     });
+    this.emitChanged(this.currentTenantId());
     return { id: pipeline.id };
   }
 
@@ -110,7 +123,7 @@ export class PipelinesService {
   async createStage(pipelineId: string, dto: CreateStageDto) {
     const tenantId = this.currentTenantId();
     await this.findPipeline(pipelineId); // tenant-scoped existence check
-    return this.prisma.t.stage.create({
+    const created = await this.prisma.t.stage.create({
       data: {
         tenantId,
         pipelineId,
@@ -120,6 +133,8 @@ export class PipelinesService {
         type: dto.type ?? StageType.NORMAL,
       },
     });
+    this.emitChanged(tenantId);
+    return created;
   }
 
   async listStages(pipelineId: string) {
@@ -135,7 +150,7 @@ export class PipelinesService {
       where: { id: stageId, deletedAt: null },
     });
     if (!stage) throw new NotFoundException("Stage not found");
-    return this.prisma.t.stage.update({
+    const updated = await this.prisma.t.stage.update({
       where: { id: stageId },
       data: {
         ...(dto.name !== undefined ? { name: dto.name } : {}),
@@ -144,26 +159,66 @@ export class PipelinesService {
         ...(dto.type !== undefined ? { type: dto.type } : {}),
       },
     });
+    this.emitChanged(this.currentTenantId());
+    return updated;
   }
 
-  async deleteStage(stageId: string): Promise<{ id: string }> {
+  /**
+   * Deletes a stage and MOVES its cards to another stage (never loses them).
+   * Target: explicit `reassignToStageId`, else the first remaining NORMAL
+   * stage in the pipeline (by order), else any remaining stage. Refuses only
+   * if it's the pipeline's last stage (nowhere to move cards).
+   */
+  async deleteStage(stageId: string, reassignToStageId?: string): Promise<{ id: string; movedCards: number; movedToStageId: string | null }> {
+    const tenantId = this.currentTenantId();
     const stage = await this.prisma.t.stage.findFirst({
       where: { id: stageId, deletedAt: null },
     });
     if (!stage) throw new NotFoundException("Stage not found");
+
     const liveCards = await this.prisma.t.card.count({
       where: { stageId, deletedAt: null },
     });
+
+    let movedToStageId: string | null = null;
     if (liveCards > 0) {
-      throw new BadRequestException(
-        `Stage has ${liveCards} card(s); move them before deleting`,
-      );
+      // Pick the destination stage.
+      const target = reassignToStageId
+        ? await this.prisma.t.stage.findFirst({
+            where: { id: reassignToStageId, pipelineId: stage.pipelineId, deletedAt: null },
+          })
+        : await this.prisma.t.stage.findFirst({
+            where: {
+              pipelineId: stage.pipelineId,
+              deletedAt: null,
+              type: StageType.NORMAL,
+              NOT: { id: stageId },
+            },
+            orderBy: { order: "asc" },
+          }) ??
+          (await this.prisma.t.stage.findFirst({
+            where: { pipelineId: stage.pipelineId, deletedAt: null, NOT: { id: stageId } },
+            orderBy: { order: "asc" },
+          }));
+      if (!target) {
+        throw new BadRequestException(
+          "Cannot delete the last stage of a pipeline — create another stage first",
+        );
+      }
+      const moved = await this.prisma.t.card.updateMany({
+        where: { stageId, deletedAt: null },
+        data: { stageId: target.id, enteredStageAt: new Date() },
+      });
+      movedToStageId = target.id;
+      void moved;
     }
+
     await this.prisma.t.stage.update({
       where: { id: stage.id },
       data: { deletedAt: new Date() },
     });
-    return { id: stage.id };
+    this.emitChanged(tenantId);
+    return { id: stage.id, movedCards: liveCards, movedToStageId };
   }
 
   /**
@@ -190,6 +245,7 @@ export class PipelinesService {
         this.prisma.t.stage.update({ where: { id }, data: { order: idx } }),
       ),
     );
+    this.emitChanged(this.currentTenantId());
     return this.listStages(pipelineId);
   }
 }

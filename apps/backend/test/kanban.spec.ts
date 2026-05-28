@@ -273,11 +273,21 @@ describe("M3 — Kanban (pipelines, stages, cards, tags, notes, tasks)", () => {
     expect(done.result).toBe("Reached the client");
   });
 
-  it("stage delete is refused if cards remain", async () => {
-    // stageNewId still has cards from earlier tests.
-    await expect(asTenant(() => pipelines.deleteStage(stageNewId))).rejects.toBeInstanceOf(
-      BadRequestException,
+  it("stage delete moves remaining cards to another stage (never lost) — CALL_FIXES", async () => {
+    // stageNewId still has cards from earlier tests; deleting it must move
+    // them to another stage in the pipeline rather than refusing/losing them.
+    const before = await asTenant(() =>
+      prisma.t.card.count({ where: { stageId: stageNewId, deletedAt: null } }),
     );
+    expect(before).toBeGreaterThan(0);
+    const result = await asTenant(() => pipelines.deleteStage(stageNewId));
+    expect(result.movedCards).toBe(before);
+    expect(result.movedToStageId).not.toBeNull();
+    // No cards were lost — they now live in the destination stage.
+    const moved = await asTenant(() =>
+      prisma.t.card.count({ where: { stageId: result.movedToStageId!, deletedAt: null } }),
+    );
+    expect(moved).toBeGreaterThanOrEqual(before);
   });
 
   it("stage type enum values match shared StageType", () => {

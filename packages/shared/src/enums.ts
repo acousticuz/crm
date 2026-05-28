@@ -46,6 +46,7 @@ export enum CallDirection {
 }
 
 export enum CallStatus {
+  RINGING = "RINGING",
   ANSWERED = "ANSWERED",
   MISSED = "MISSED",
   BUSY = "BUSY",

@@ -1,5 +1,6 @@
-import { Type } from "class-transformer";
+import { Transform, Type } from "class-transformer";
 import {
+  IsBoolean,
   IsDateString,
   IsInt,
   IsNumber,
@@ -118,6 +119,11 @@ export class FindCardsDto {
   @IsOptional()
   @IsString()
   q?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => value === "true" || value === true || value === "1")
+  @IsBoolean()
+  missedOnly?: boolean;
 
   @IsOptional()
   @Type(() => Number)

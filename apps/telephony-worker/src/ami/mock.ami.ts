@@ -1,21 +1,24 @@
 import type {
   AmiCallCompleted,
   AmiCallEvent,
+  AmiCallStarted,
   AmiClient,
   AmiOriginateRequest,
 } from "./ami-client";
 
+type StartedHandler = (e: AmiCallStarted) => void | Promise<void>;
 type IncomingHandler = (e: AmiCallEvent) => void | Promise<void>;
 type CompletedHandler = (e: AmiCallCompleted) => void | Promise<void>;
 
 /**
  * Deterministic in-process AMI mock. Exposes `simulateInbound` /
  * `simulateOutbound` / `simulateMissed` so tests and the dev REPL can drive
- * the worker without a real PBX. `originate` immediately completes a
- * synthetic outbound call so the operator sees the full lifecycle.
+ * the worker without a real PBX. Each simulation emits started → completed so
+ * the full lifecycle (RINGING then final status) is exercised.
  */
 export class MockAmiClient implements AmiClient {
   readonly name = "mock";
+  private started: StartedHandler[] = [];
   private incoming: IncomingHandler[] = [];
   private completed: CompletedHandler[] = [];
 
@@ -27,6 +30,10 @@ export class MockAmiClient implements AmiClient {
     /* no-op */
   }
 
+  onStarted(h: StartedHandler): void {
+    this.started.push(h);
+  }
+
   onIncoming(h: IncomingHandler): void {
     this.incoming.push(h);
   }
@@ -36,24 +43,17 @@ export class MockAmiClient implements AmiClient {
   }
 
   async originate(req: AmiOriginateRequest): Promise<void> {
-    // Simulate the dial + completion lifecycle. Real Asterisk would emit
-    // Dial → Bridge → Hangup events; we collapse that into the same callbacks
-    // for tests.
     const startedAt = new Date().toISOString();
-    await this.fanIn(this.incoming, {
+    const base: AmiCallEvent = {
       cdrUniqueId: req.cdrUniqueId,
       tenantId: req.tenantId,
       fromNumber: req.fromExtension,
       toNumber: req.toNumber,
       operatorId: req.operatorId,
-    });
-    // Pretend the call lasted 30 seconds and was answered.
+    };
+    await this.fanIn(this.started, { ...base, direction: "OUTBOUND", startedAt });
     await this.fanIn(this.completed, {
-      cdrUniqueId: req.cdrUniqueId,
-      tenantId: req.tenantId,
-      fromNumber: req.fromExtension,
-      toNumber: req.toNumber,
-      operatorId: req.operatorId,
+      ...base,
       direction: "OUTBOUND",
       status: "ANSWERED",
       startedAt,
@@ -79,6 +79,7 @@ export class MockAmiClient implements AmiClient {
       toNumber: input.toNumber ?? "+998000000000",
       operatorId: input.operatorId,
     };
+    await this.fanIn(this.started, { ...evt, direction: "INBOUND", startedAt });
     await this.fanIn(this.incoming, evt);
     await this.fanIn(this.completed, {
       ...evt,
@@ -98,6 +99,7 @@ export class MockAmiClient implements AmiClient {
     operatorId?: string;
   }): Promise<string> {
     const cdrUniqueId = `mock-miss-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const startedAt = new Date().toISOString();
     const evt: AmiCallEvent = {
       cdrUniqueId,
       tenantId: input.tenantId,
@@ -105,12 +107,13 @@ export class MockAmiClient implements AmiClient {
       toNumber: input.toNumber ?? "+998000000000",
       operatorId: input.operatorId,
     };
+    await this.fanIn(this.started, { ...evt, direction: "INBOUND", startedAt });
     await this.fanIn(this.incoming, evt);
     await this.fanIn(this.completed, {
       ...evt,
       direction: "INBOUND",
       status: "MISSED",
-      startedAt: new Date().toISOString(),
+      startedAt,
       duration: 0,
     });
     return cdrUniqueId;

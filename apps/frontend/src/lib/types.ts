@@ -55,6 +55,7 @@ export interface CardListItem {
   enteredStageAt: string;
   createdAt: string;
   cardTags: Array<{ cardId: string; tagId: string; tag: Tag }>;
+  hasMissedCall?: boolean;
 }
 
 export interface CardDetail extends CardListItem {

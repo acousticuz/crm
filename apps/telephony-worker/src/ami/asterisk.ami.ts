@@ -45,6 +45,7 @@ interface ManagerEvent {
 import type {
   AmiCallCompleted,
   AmiCallEvent,
+  AmiCallStarted,
   AmiClient,
   AmiOriginateRequest,
 } from "./ami-client";
@@ -77,6 +78,7 @@ interface PendingCall {
 export class AsteriskAmiClient implements AmiClient {
   readonly name = "asterisk";
   private ami: AsteriskManagerInstance | null = null;
+  private startedHandlers: Array<(e: AmiCallStarted) => void | Promise<void>> = [];
   private incomingHandlers: Array<(e: AmiCallEvent) => void | Promise<void>> = [];
   private completedHandlers: Array<(e: AmiCallCompleted) => void | Promise<void>> = [];
   private pending = new Map<string, PendingCall>();
@@ -140,6 +142,10 @@ export class AsteriskAmiClient implements AmiClient {
   async disconnect(): Promise<void> {
     this.ami?.disconnect();
     this.ami = null;
+  }
+
+  onStarted(h: (e: AmiCallStarted) => void | Promise<void>): void {
+    this.startedHandlers.push(h);
   }
 
   onIncoming(h: (e: AmiCallEvent) => void | Promise<void>): void {
@@ -230,6 +236,16 @@ export class AsteriskAmiClient implements AmiClient {
           answered: false,
         };
         this.pending.set(uniqueId, entry);
+        // Create the Call row eagerly (RINGING) so it's never lost even if
+        // unanswered, then fire the screen-pop.
+        await this.fanIn(this.startedHandlers, {
+          cdrUniqueId: entry.cdrUniqueId,
+          tenantId: entry.tenantId,
+          fromNumber: entry.fromNumber,
+          toNumber: entry.toNumber,
+          direction: "INBOUND",
+          startedAt: entry.startedAt.toISOString(),
+        });
         await this.fanIn(this.incomingHandlers, {
           cdrUniqueId: entry.cdrUniqueId,
           tenantId: entry.tenantId,

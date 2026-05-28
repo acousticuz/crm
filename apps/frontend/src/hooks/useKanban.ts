@@ -17,6 +17,7 @@ export interface CardFilters {
   responsibleUserId?: string;
   branchId?: string;
   source?: string;
+  missedOnly?: boolean;
   dateFrom?: string;
   dateTo?: string;
   q?: string;
@@ -199,13 +200,21 @@ export function useKanbanRealtime(): void {
     const refetch = () => {
       qc.invalidateQueries({ queryKey: ["cards"] });
     };
+    const refetchPipelines = () => {
+      qc.invalidateQueries({ queryKey: ["pipelines"] });
+      qc.invalidateQueries({ queryKey: ["cards"] });
+    };
     socket.on("card:moved", refetch);
     socket.on("card:created", refetch);
     socket.on("card:updated", refetch);
+    socket.on("call:ended", refetch);
+    socket.on("pipeline:updated", refetchPipelines);
     return () => {
       socket.off("card:moved", refetch);
       socket.off("card:created", refetch);
       socket.off("card:updated", refetch);
+      socket.off("call:ended", refetch);
+      socket.off("pipeline:updated", refetchPipelines);
     };
   }, [qc]);
 }

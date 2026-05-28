@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from "@nestjs/common";
 import { UserRole } from "@acoustic-crm/shared";
@@ -84,8 +85,11 @@ export class PipelinesController {
   @Delete(":id/stages/:stageId")
   @HttpCode(HttpStatus.OK)
   @Audit({ action: "stage.delete", entityType: "Stage", entityIdPath: "params.stageId" })
-  deleteStage(@Param("stageId") stageId: string) {
-    return this.service.deleteStage(stageId);
+  deleteStage(
+    @Param("stageId") stageId: string,
+    @Query("reassignTo") reassignTo?: string,
+  ) {
+    return this.service.deleteStage(stageId, reassignTo);
   }
 
   @Roles(UserRole.TENANT_ADMIN, UserRole.SUPERVISOR)

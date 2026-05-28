@@ -20,6 +20,18 @@ export class BackendClient {
     });
   }
 
+  async reportStarted(body: {
+    tenantId: string;
+    cdrUniqueId: string;
+    direction: "INBOUND" | "OUTBOUND";
+    fromNumber: string;
+    toNumber: string;
+    operatorId?: string;
+    startedAt: string;
+  }): Promise<void> {
+    await this.http.post("/started", body);
+  }
+
   async reportIncoming(body: {
     tenantId: string;
     cdrUniqueId: string;

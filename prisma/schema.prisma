@@ -60,6 +60,7 @@ enum CallDirection {
 }
 
 enum CallStatus {
+  RINGING
   ANSWERED
   MISSED
   BUSY
@@ -373,6 +374,7 @@ model Call {
   toNumber      String
   status        CallStatus
   startedAt     DateTime
+  endedAt       DateTime?
   duration      Int           @default(0)
   recordingUrl  String?
   cdrUniqueId   String?

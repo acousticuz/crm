@@ -4,7 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
+import { PipelineEditor } from "@/components/settings/PipelineEditor";
 import {
   useDisconnectIntegration,
   useIntegrations,
@@ -68,28 +70,54 @@ const TITLES: Record<IntegrationType, string> = {
   INBOX: "Omnichannel inbox (IG/FB)",
 };
 
+type SettingsTab = "integrations" | "pipelines";
+
 export function SettingsPage(): JSX.Element {
   const { user } = useAuth();
   const isTenantAdmin = user?.role === "TENANT_ADMIN";
-  const { data: integrations = [], isLoading } = useIntegrations();
+  const [tab, setTab] = useState<SettingsTab>("integrations");
 
   if (!isTenantAdmin) {
     return (
       <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
-        Integratsiya sozlamalariga faqat <strong>kompaniya administratori (TENANT_ADMIN)</strong> kira oladi.
+        Sozlamalarga faqat <strong>kompaniya administratori (TENANT_ADMIN)</strong> kira oladi.
       </div>
     );
   }
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-semibold">Sozlamalar — Integratsiyalar</h1>
-        <p className="text-sm text-muted-foreground">
-          Tashqi tizimlarni ulang. Sirlar shifrlangan holda saqlanadi va hech qachon to'liq ko'rsatilmaydi.
-        </p>
+      <h1 className="text-2xl font-semibold">Sozlamalar</h1>
+      <div className="flex gap-2 border-b">
+        {([
+          { id: "integrations", label: "Integratsiyalar" },
+          { id: "pipelines", label: "Voronkalar (Kanban)" },
+        ] as Array<{ id: SettingsTab; label: string }>).map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className={cn(
+              "px-3 py-2 text-sm font-medium border-b-2 -mb-px",
+              tab === t.id ? "border-primary text-primary" : "border-transparent text-muted-foreground",
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
+      {tab === "pipelines" ? <PipelineEditor /> : <IntegrationsTab />}
+    </div>
+  );
+}
 
+function IntegrationsTab(): JSX.Element {
+  const { data: integrations = [], isLoading } = useIntegrations();
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Tashqi tizimlarni ulang. Sirlar shifrlangan holda saqlanadi va hech qachon to'liq ko'rsatilmaydi.
+      </p>
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Yuklanmoqda...</p>
       ) : (

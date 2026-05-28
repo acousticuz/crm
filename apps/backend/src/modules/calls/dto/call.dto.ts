@@ -26,6 +26,31 @@ export class CallIncomingDto {
   operatorId?: string;
 }
 
+export class CallStartedDto {
+  @IsString()
+  tenantId!: string;
+
+  @IsString()
+  cdrUniqueId!: string;
+
+  @IsEnum(CallDirection)
+  direction!: CallDirection;
+
+  @IsString()
+  fromNumber!: string;
+
+  @IsString()
+  toNumber!: string;
+
+  @IsOptional()
+  @IsString()
+  operatorId?: string;
+
+  @IsOptional()
+  @IsDateString()
+  startedAt?: string;
+}
+
 export class CallCompletedDto {
   @IsString()
   tenantId!: string;

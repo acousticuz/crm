@@ -128,6 +128,18 @@ export function KanbanFilters({ pipelines, tags, users, filters, onChange }: Pro
         </div>
       </div>
 
+      <div className="flex flex-col gap-1">
+        <label className="text-xs font-medium text-muted-foreground">Qo'ng'iroq</label>
+        <Button
+          type="button"
+          size="sm"
+          variant={filters.missedOnly ? "default" : "outline"}
+          onClick={() => patch({ missedOnly: filters.missedOnly ? undefined : true })}
+        >
+          Faqat javobsiz
+        </Button>
+      </div>
+
       <Button variant="ghost" size="sm" onClick={() => onChange({ pipelineId: filters.pipelineId })}>
         Tozalash
       </Button>

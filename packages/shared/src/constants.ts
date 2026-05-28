@@ -11,6 +11,7 @@ export const SOCKET_EVENTS = {
   TRANSCRIPT_READY: "transcript:ready",
   QA_READY: "qa:ready",
   SMS_STATUS: "sms:status",
+  PIPELINE_UPDATED: "pipeline:updated",
 } as const;
 
 export const QUEUES = {

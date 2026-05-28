@@ -1,7 +1,7 @@
 import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { format } from "date-fns";
-import { Phone, User } from "lucide-react";
+import { Phone, PhoneMissed, User } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { CardListItem } from "@/lib/types";
@@ -47,7 +47,18 @@ export function KanbanCard({ card, onOpen }: Props): JSX.Element {
         "cursor-grab active:cursor-grabbing select-none rounded-md border bg-card p-3 shadow-sm hover:shadow-md transition-shadow",
       )}
     >
-      <div className="text-sm font-medium leading-snug">{card.title}</div>
+      <div className="flex items-start justify-between gap-1">
+        <div className="text-sm font-medium leading-snug">{card.title}</div>
+        {card.hasMissedCall && (
+          <span
+            className="flex flex-shrink-0 items-center gap-0.5 rounded bg-red-100 px-1 text-[10px] font-semibold text-red-700"
+            title="Javobsiz qo'ng'iroq"
+          >
+            <PhoneMissed className="h-3 w-3" />
+            javobsiz
+          </span>
+        )}
+      </div>
       <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
         <User className="h-3 w-3" />
         <span className="truncate">{card.contact?.fullName ?? "—"}</span>

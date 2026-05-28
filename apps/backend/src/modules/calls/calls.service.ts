@@ -21,6 +21,7 @@ import { RealtimeService } from "../realtime/realtime.service";
 import {
   CallCompletedDto,
   CallIncomingDto,
+  CallStartedDto,
   OriginateCallDto,
 } from "./dto/call.dto";
 
@@ -44,38 +45,122 @@ export class CallsService {
   // ===== Inbound flow (worker → backend) =====
 
   /**
-   * Worker reports a freshly ringing inbound channel. We don't persist a
-   * Call row yet — that happens at completion time when we know status and
-   * duration. We DO emit the screen-pop event over Socket.io with a contact
-   * lookup so the right operator sees the caller's card.
+   * Resolve the contact for a phone, CREATING a "Noma'lum" placeholder if no
+   * contact owns the number. Idempotent — repeated calls from the same
+   * unknown number reuse the contact (no duplicates). Returns null only when
+   * the phone is unusable (empty/internal channel).
+   */
+  private async resolveOrCreateContact(
+    tenantId: string,
+    rawPhone: string,
+    source: string,
+  ) {
+    const phone = tryNormalizePhone(rawPhone);
+    if (!phone) return null;
+    const existing = await this.prisma.t.contact.findFirst({
+      where: { phones: { has: phone }, deletedAt: null },
+    });
+    if (existing) return existing;
+    return this.prisma.t.contact.create({
+      data: {
+        tenantId,
+        fullName: "Noma'lum",
+        phones: [phone],
+        source,
+      },
+    });
+  }
+
+  private async openCardFor(contactId: string) {
+    return this.prisma.t.card.findFirst({
+      where: { contactId, deletedAt: null, status: "OPEN" },
+      orderBy: { enteredStageAt: "desc" },
+    });
+  }
+
+  /**
+   * Worker reports a channel has STARTED ringing. The Call row is created
+   * immediately (status=RINGING) so a call is never lost even if it's never
+   * answered — `completed` later updates the final status. Inbound calls from
+   * unknown numbers auto-create a "Noma'lum" contact. A screen-pop is emitted
+   * for inbound calls.
+   */
+  async started(dto: CallStartedDto) {
+    const isInbound = dto.direction === CallDirection.INBOUND;
+    const customerRaw = isInbound ? dto.fromNumber : dto.toNumber;
+    const fromNorm = tryNormalizePhone(dto.fromNumber) ?? (dto.fromNumber || "unknown");
+    const toNorm = tryNormalizePhone(dto.toNumber) ?? (dto.toNumber || "unknown");
+
+    // Internal/Local channels without a usable external number aren't real
+    // customer calls — skip without persisting.
+    if (!tryNormalizePhone(customerRaw)) {
+      return { ignored: true, callId: null, contactId: null, cardId: null };
+    }
+
+    // Inbound: create a "Noma'lum" contact if unknown. Outbound: link if the
+    // dialed number already belongs to a contact, else leave null.
+    const contact = isInbound
+      ? await this.resolveOrCreateContact(dto.tenantId, customerRaw, "inbound_call")
+      : await this.prisma.t.contact.findFirst({
+          where: { phones: { has: tryNormalizePhone(customerRaw)! }, deletedAt: null },
+        });
+    const card = contact ? await this.openCardFor(contact.id) : null;
+
+    const call = await this.prisma.t.call.upsert({
+      where: {
+        tenantId_cdrUniqueId: { tenantId: dto.tenantId, cdrUniqueId: dto.cdrUniqueId },
+      },
+      create: {
+        tenantId: dto.tenantId,
+        cdrUniqueId: dto.cdrUniqueId,
+        direction: dto.direction,
+        fromNumber: fromNorm,
+        toNumber: toNorm,
+        status: CallStatus.RINGING,
+        startedAt: dto.startedAt ? new Date(dto.startedAt) : new Date(),
+        operatorId: dto.operatorId ?? null,
+        contactId: contact?.id ?? null,
+        cardId: card?.id ?? null,
+      },
+      update: {
+        // started may arrive twice (retry) — keep RINGING, refresh links.
+        contactId: contact?.id ?? null,
+        cardId: card?.id ?? null,
+        operatorId: dto.operatorId ?? undefined,
+      },
+    });
+
+    if (isInbound) {
+      this.realtime.toTenant(dto.tenantId, SOCKET_EVENTS.CALL_INCOMING, {
+        cdrUniqueId: dto.cdrUniqueId,
+        callId: call.id,
+        fromNumber: fromNorm,
+        toNumber: toNorm,
+        operatorId: dto.operatorId ?? null,
+        contact: contact
+          ? { id: contact.id, fullName: contact.fullName, phones: contact.phones, email: contact.email }
+          : null,
+        card: card ? { id: card.id, title: card.title } : null,
+      });
+    }
+
+    return { callId: call.id, contactId: contact?.id ?? null, cardId: card?.id ?? null };
+  }
+
+  /**
+   * Legacy screen-pop-only entrypoint kept for compatibility. Delegates to
+   * `started` so a Call row is always created.
    */
   async incoming(dto: CallIncomingDto) {
-    const fromNorm = tryNormalizePhone(dto.fromNumber);
-    // Internal/Local channels (empty or feature-code caller IDs) aren't real
-    // customer calls — acknowledge without screen-pop so the worker doesn't
-    // retry on a 500.
-    if (!fromNorm) {
-      return { matched: false, contactId: null, cardId: null, ignored: true };
-    }
-    const contact = await this.prisma.t.contact.findFirst({
-      where: { phones: { has: fromNorm }, deletedAt: null },
-      select: { id: true, fullName: true, phones: true, email: true },
-    });
-    const openCard = contact
-      ? await this.prisma.t.card.findFirst({
-          where: { contactId: contact.id, deletedAt: null, status: "OPEN" },
-          select: { id: true, title: true, stageId: true, pipelineId: true },
-        })
-      : null;
-    this.realtime.toTenant(dto.tenantId, SOCKET_EVENTS.CALL_INCOMING, {
+    const r = await this.started({
+      tenantId: dto.tenantId,
       cdrUniqueId: dto.cdrUniqueId,
-      fromNumber: fromNorm,
+      direction: CallDirection.INBOUND,
+      fromNumber: dto.fromNumber,
       toNumber: dto.toNumber,
-      operatorId: dto.operatorId ?? null,
-      contact,
-      card: openCard,
+      operatorId: dto.operatorId,
     });
-    return { matched: !!contact, contactId: contact?.id ?? null, cardId: openCard?.id ?? null };
+    return { matched: !!r.contactId, contactId: r.contactId, cardId: r.cardId, ignored: r.ignored };
   }
 
   /**
@@ -89,23 +174,20 @@ export class CallsService {
     // to a contact.
     const fromNorm = tryNormalizePhone(dto.fromNumber) ?? (dto.fromNumber || "unknown");
     const toNorm = tryNormalizePhone(dto.toNumber) ?? (dto.toNumber || "unknown");
+    const isInbound = dto.direction === CallDirection.INBOUND;
+    const customerRaw = isInbound ? dto.fromNumber : dto.toNumber;
 
-    // Find the contact that owns the customer-side number (depending on
-    // direction). Then find an open card linked to that contact. Only search
-    // when we have a usable, normalized number.
-    const customerPhone = dto.direction === CallDirection.INBOUND ? fromNorm : toNorm;
-    const customerPhoneUsable = tryNormalizePhone(customerPhone);
-    const contact = customerPhoneUsable
-      ? await this.prisma.t.contact.findFirst({
-          where: { phones: { has: customerPhoneUsable }, deletedAt: null },
-        })
-      : null;
-    const card = contact
-      ? await this.prisma.t.card.findFirst({
-          where: { contactId: contact.id, deletedAt: null, status: "OPEN" },
-          orderBy: { enteredStageAt: "desc" },
-        })
-      : null;
+    // Resolve the customer contact. For inbound calls we CREATE a "Noma'lum"
+    // contact if unknown so no call/number is ever lost (idempotent). For
+    // outbound we only link to an existing contact.
+    const contact = isInbound
+      ? await this.resolveOrCreateContact(dto.tenantId, customerRaw, "inbound_call")
+      : tryNormalizePhone(customerRaw)
+        ? await this.prisma.t.contact.findFirst({
+            where: { phones: { has: tryNormalizePhone(customerRaw)! }, deletedAt: null },
+          })
+        : null;
+    const card = contact ? await this.openCardFor(contact.id) : null;
 
     const call = await this.prisma.t.call.upsert({
       where: {
@@ -119,6 +201,7 @@ export class CallsService {
         toNumber: toNorm,
         status: dto.status,
         startedAt: new Date(dto.startedAt),
+        endedAt: new Date(),
         duration: dto.duration,
         recordingUrl: dto.recordingUrl ?? null,
         operatorId: dto.operatorId ?? null,
@@ -126,7 +209,9 @@ export class CallsService {
         cardId: card?.id ?? null,
       },
       update: {
+        // Finalize the RINGING row created by `started`.
         status: dto.status,
+        endedAt: new Date(),
         duration: dto.duration,
         recordingUrl: dto.recordingUrl ?? null,
         contactId: contact?.id ?? null,
@@ -146,7 +231,7 @@ export class CallsService {
             contactId: contact.id,
             assigneeId: assignee,
             type: TaskType.CALL,
-            text: `Javobsiz qo'ng'iroq: ${contact.fullName} (${customerPhone}) ga qayta qo'ng'iroq qiling`,
+            text: `Javobsiz qo'ng'iroq: ${contact.fullName} (${isInbound ? fromNorm : toNorm}) ga qayta qo'ng'iroq qiling`,
             dueAt: new Date(Date.now() + 60 * 60_000), // 1 hour from now
           },
         });

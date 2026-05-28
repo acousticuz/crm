@@ -99,6 +99,10 @@ export class CardsService {
     if (query.branchId) where.branchId = query.branchId;
     if (query.tagId) where.cardTags = { some: { tagId: query.tagId } };
     if (query.source) where.contact = { source: query.source };
+    // "Missed only" — cards that have at least one MISSED call.
+    if (query.missedOnly) {
+      where.calls = { some: { status: "MISSED", deletedAt: null } };
+    }
     if (query.dateFrom || query.dateTo) {
       where.createdAt = {};
       if (query.dateFrom) (where.createdAt as Prisma.DateTimeFilter).gte = new Date(query.dateFrom);
@@ -119,7 +123,7 @@ export class CardsService {
       ];
     }
 
-    const [items, total] = await Promise.all([
+    const [rows, total] = await Promise.all([
       this.prisma.t.card.findMany({
         where,
         orderBy: [{ stageId: "asc" }, { enteredStageAt: "desc" }],
@@ -129,10 +133,23 @@ export class CardsService {
           contact: { select: { id: true, fullName: true, phones: true, email: true } },
           cardTags: { include: { tag: true } },
           responsible: { select: { id: true, fullName: true, email: true } },
+          // Pull recent call statuses so the board can show a red "missed"
+          // badge without an extra round-trip.
+          calls: {
+            where: { deletedAt: null },
+            orderBy: { startedAt: "desc" },
+            take: 5,
+            select: { id: true, status: true, direction: true, startedAt: true },
+          },
         },
       }),
       this.prisma.t.card.count({ where }),
     ]);
+    // Derive a hasMissedCall flag for the UI badge.
+    const items = rows.map((card) => ({
+      ...card,
+      hasMissedCall: card.calls.some((c) => c.status === "MISSED"),
+    }));
     return { items, total, page, pageSize };
   }
 

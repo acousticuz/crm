@@ -181,7 +181,7 @@ describe("M6 — Calls (AMI mock + inbound + MISSED + tenant isolation)", () => 
     expect(task!.cardId).toBe(cardId);
   });
 
-  it("incoming() returns no contact match when the number is unknown", async () => {
+  it("incoming() from an unknown number auto-creates a 'Noma'lum' contact (CALL_FIXES)", async () => {
     const result = await asTenant(tenantId, () =>
       calls.incoming({
         tenantId,
@@ -190,8 +190,14 @@ describe("M6 — Calls (AMI mock + inbound + MISSED + tenant isolation)", () => 
         toNumber: "+998000000000",
       }),
     );
-    expect(result.matched).toBe(false);
-    expect(result.contactId).toBeNull();
+    // New behavior: unknown inbound numbers are never lost — a "Noma'lum"
+    // contact is created and linked.
+    expect(result.matched).toBe(true);
+    expect(result.contactId).not.toBeNull();
+    const c = await asTenant(tenantId, () =>
+      prisma.t.contact.findFirst({ where: { id: result.contactId! } }),
+    );
+    expect(c?.fullName).toBe("Noma'lum");
   });
 
   it("tenant isolation: completed() in tenant A does not leak Call rows into tenant B", async () => {

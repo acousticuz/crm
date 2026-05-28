@@ -396,3 +396,31 @@ Operator drafni tahrirlasa va approve qilsa, **qayta sensitivity tekshiriladi** 
 **Qaror:** Platform-darajadagi defaultlar (default STT/LLM provayder, default limitlar) alohida jadval o'rniga `__system__` tenant'ning `settings.platform` JSON'ida saqlanadi. Per-tenant limitlar esa har tenant'ning `settings.limits` da.
 
 **Sabab:** Yangi `PlatformSetting` jadvali migration churn qo'shadi; `__system__` tenant allaqachon seed'da yaratilgan singleton. Settings JSON moslashuvchan (yangi default qo'shish migration talab qilmaydi). Super-admin kam o'zgartiradigan global sozlama uchun yetarli.
+
+---
+
+## §53. Call lifecycle — RINGING eager-create then finalize — CALL_FIXES
+**Qaror:** `CallStatus` ga `RINGING` qo'shildi + `Call.endedAt`. Qo'ng'iroq AMI'da boshlanganda (`Newchannel`) `POST /internal/calls/started` Call'ni **RINGING** holatda yaratadi; `Hangup`da `/completed` yakuniy holat (ANSWERED/MISSED/BUSY/FAILED) bilan yangilaydi. Ikkalasi ham `(tenantId, cdrUniqueId)` bo'yicha idempotent upsert.
+
+**Sabab:** Eski oqimda Call faqat `completed`da yaratilardi — agar `DialEnd`/`Hangup` event yetib kelmasa yoki javob berilmasa, javobsiz qo'ng'iroq yo'qolardi. Eager-create RINGING — javobsiz/band/muvaffaqiyatsiz qo'ng'iroqlar ham doimo saqlanadi (CALL_FIXES asosiy talabi). `endedAt` qo'ng'iroq tugaganini ko'rsatadi.
+
+---
+
+## §54. Unknown inbound number → "Noma'lum" contact, idempotent — CALL_FIXES
+**Qaror:** `resolveOrCreateContact(tenantId, phone, source)` — kiruvchi qo'ng'iroqda raqam topilmasa Contact yaratadi (`fullName="Noma'lum"`, `source="inbound_call"`). Telefon bo'yicha avval qidiradi, faqat topilmasa yaratadi — qayta qo'ng'iroqda dublikat yo'q. Faqat INBOUND uchun (outbound operator kartadan boshlaydi).
+
+**Sabab:** CALL_FIXES #2 — hech bir raqam/qo'ng'iroq yo'qolmasligi kerak. "Noma'lum" placeholder operator keyin tahrirlaydigan haqiqiy lead. Idempotency `phones hasSome` qidiruvi orqali tabiiy.
+
+---
+
+## §55. Stage delete moves cards (never lose) — CALL_FIXES
+**Qaror:** `PipelinesService.deleteStage` endi kartalarni rad etish o'rniga boshqa stage'ga ko'chiradi: explicit `reassignTo` query param, yoki birinchi NORMAL stage (order bo'yicha), yoki har qanday qolgan stage. Faqat pipeline'ning oxirgi stage'i bo'lsa rad etadi (ko'chirish uchun joy yo'q).
+
+**Sabab:** CALL_FIXES #3 — "ustun o'chirilsa kartalar yo'qolmaydi". Avvalgi xulq (kartalar bo'lsa 400) admin uchun blokirovka edi. Endi xavfsiz: o'chirish + ko'chirish bitta amalda, `movedCards`/`movedToStageId` qaytariladi (UI ogohlantirishi uchun). Pipeline/stage mutatsiyalari `pipeline:updated` Socket.io event chiqaradi — Kanban real-time yangilanadi.
+
+---
+
+## §56. No WebRTC/softphone in this module — explicit scope
+**Qaror:** Brauzerda ovoz (WebRTC softphone) bu modulga KIRMAYDI. Click-to-call AMI Originate orqali — operator extension'i jiringlaydi, ko'targach mijozga ulanadi, ovoz operatorning alohida telefonida. CRM faqat qo'ng'iroqni QAYD qiladi va TAHLIL qiladi.
+
+**Sabab:** CALL_FIXES_MODULE.md aniq belgilaydi: WebRTC alohida kelajak modul. AMI Originate yetarli — qo'shimcha SIP/WebRTC infratuzilma (TURN/STUN, media server) talab qilmaydi. Bu MVP'ni soddalashtiradi va mavjud FreePBX extension oqimidan foydalanadi.
