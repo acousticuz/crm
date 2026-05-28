@@ -22,6 +22,11 @@ const TENANT_SCOPED_MODELS = new Set<string>([
   "Trigger",
   "Note",
   "AuditLog",
+  // Added after M1 — must be listed here or queries via prisma.t leak across
+  // tenants (these all carry a direct tenantId column).
+  "InboxThread",
+  "InboxMessage",
+  "Integration",
 ]);
 
 // Operation buckets — different argument shapes (where vs data vs both).

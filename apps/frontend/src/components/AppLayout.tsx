@@ -9,6 +9,7 @@ const navItems = [
   { to: "/kanban", label: "Kanban" },
   { to: "/inbox", label: "Inbox" },
   { to: "/dashboard", label: "Dashboard" },
+  { to: "/settings", label: "Sozlamalar" },
 ];
 
 export function AppLayout(): JSX.Element {

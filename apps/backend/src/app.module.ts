@@ -14,10 +14,13 @@ import { AuditModule } from "./modules/audit/audit.module";
 import { AuditInterceptor } from "./modules/audit/audit.interceptor";
 import { RealtimeModule } from "./modules/realtime/realtime.module";
 import { NotesModule } from "./modules/notes/notes.module";
+import { QueueModule } from "./modules/queue/queue.module";
+import { TranscriptsModule } from "./modules/transcripts/transcripts.module";
 
 import { AuthModule } from "./modules/auth/auth.module";
 import { TenantsModule } from "./modules/tenants/tenants.module";
 import { UsersModule } from "./modules/users/users.module";
+import { IntegrationsModule } from "./modules/integrations/integrations.module";
 
 // Future-milestone stubs (implementations in M2+).
 import { ContactsModule } from "./modules/contacts/contacts.module";
@@ -44,10 +47,12 @@ import { InboxModule } from "./modules/inbox/inbox.module";
     PrismaModule,
     AuditModule,
     RealtimeModule,
+    QueueModule,
     HealthModule,
     AuthModule,
     TenantsModule,
     UsersModule,
+    IntegrationsModule,
     ContactsModule,
     LeadsModule,
     PipelinesModule,
@@ -55,6 +60,7 @@ import { InboxModule } from "./modules/inbox/inbox.module";
     TagsModule,
     TasksModule,
     NotesModule,
+    TranscriptsModule,
     CallsModule,
     SmsModule,
     TriggersModule,

@@ -1,97 +1,68 @@
 # PROGRESS
 
 ## Holat
-- **Loyiha tugatildi** 🎉
-- Joriy milestone: **M11 — Yakuniy (deploy + seed + smoke-test)**
+- **Asosiy 11 milestone + Settings/Integrations moduli tugatildi** 🎉
+- Joriy ish: **Settings + Integrations moduli** (SETTINGS_MODULE.md)
 - Status: **done**
 - Repo: https://github.com/acousticuz/crm
 
 ## Milestone'lar
-- [x] **M0** — Poydevor
-- [x] **M1** — Auth + Multi-tenant + RBAC
-- [x] **M2** — Kontaktlar + Lead'lar
-- [x] **M3** — Kanban + Teglar
-- [x] **M4** — Triggerlar
-- [x] **M5** — SMS
-- [x] **M6** — FreePBX telefoniya
-- [x] **M7** — STT
-- [x] **M8** — AI tahlil + QA
-- [x] **M9** — Dashboard + KPI
-- [x] **M10** — Omnichannel inbox + auto-javob
-- [x] **M11** — Yakuniy (deploy + seed + smoke-test) ✅
+- [x] **M0–M11** — to'liq (poydevor → yakuniy deploy/seed/smoke-test)
+- [x] **Settings + Integrations** — sozlamalar va integratsiyalar moduli
 
-## M11 qadamlari — Yakuniy
-### Production stack
-- [x] **`docker-compose.prod.yml`** — postgres/redis/minio/backend/frontend/telephony-worker/ai-worker/nginx 8 ta xizmat. Tashqi port faqat nginx (80/443).
-- [x] **`docker/backend.Dockerfile`**, **`telephony-worker.Dockerfile`**, **`ai-worker.Dockerfile`**, **`frontend.Dockerfile`** — multi-stage Node 20 Alpine, prod build, minimal runtime.
-- [x] **`docker/nginx-prod/`** — nginx.conf + conf.d/acoustic.conf: HTTPS, security headers (HSTS, X-Frame-Options, ...), `/api/` → backend, `/socket.io/` upgrade, SPA fallback.
-- [x] **`scripts/issue-ssl.sh`** — Let's Encrypt webroot certificate issuance.
-- [x] **`scripts/backup-db.sh`** — pg_dump → gzip, 14 kunlik retention, container-mounted `/backups`.
+## Settings + Integrations moduli (SETTINGS_MODULE.md)
+### Schema (migration `20260528..._add_integrations`)
+- [x] **Integration** model — tenantId, type(FREEPBX|SMS|TELEGRAM|INBOX), provider?, config(Json — sirlar shifrlangan), status(CONNECTED|DISCONNECTED|ERROR), lastTestedAt, lastTestResult. Unique `(tenantId, type)`. Enums shared'da ham.
 
-### Backend hardening
-- [x] **Swagger** `@nestjs/swagger` ulandi: `/api/docs` da OpenAPI UI. Prod'da SWAGGER_ENABLED=1 bilan yoqiladi. Bearer JWT scheme.
-- [x] **Acoustic seed script** (`apps/backend/scripts/seed-acoustic.js`):
-  - Tenant "Acoustic" + auto-generated webhookSecret
-  - **22 ta filial** (Toshkent tumanlari + 10 viloyat markazlari)
-  - Default pipeline "Sotuv" + 5 stage
-  - 6 ta tag (VIP, qiziqish_yuqori, shikoyat, narx_so'rovi, filial_tashrifi, qaytarish)
-  - QA script "Acoustic standart" + 4 mezon (uz keywords MockLlm uchun)
-  - 5 user: TENANT_ADMIN + SUPERVISOR + 3 OPERATOR turli filiallarda
-  - Idempotent (har bir entiti `findFirst` orqali tekshiriladi)
+### Backend
+- [x] **AES-256-GCM crypto** (`common/crypto.ts`) — `ENCRYPTION_KEY` (scrypt-derived 32B); `encryptSecret`/`decryptSecret` (iv:tag:cipher), `maskSecret` (oxirgi 4 belgi), `isEncrypted`.
+- [x] **Secret field registry** (`integration-fields.ts`) — har tur uchun qaysi maydonlar sir: FREEPBX→amiSecret; SMS→apiKey,password; TELEGRAM→botToken; INBOX→pageAccessToken. Public fields whitelisted.
+- [x] **IntegrationsService**:
+  - `upsert` — sirlarni shifrlaydi (`_encrypted` ostida), public fieldlar ochiq; maskalangan/bo'sh sir kelса eski sir saqlanadi; noma'lum field rad etiladi; AuditLog (sirlarsiz, faqat field nomlari)
+  - `get`/`list` — maskalangan (`••••••1234`); `_encrypted` bag hech qachon API'ga chiqmaydi
+  - `getDecryptedConfig` — faqat backend-ichki (workerlar/test uchun)
+  - `test` — FreePBX (raw AMI Login+CoreStatus TCP), SMS (Eskiz auth / Play basic), Telegram (getMe), Inbox (Graph me) — natija umumiy, sir oshkor qilinmaydi (rule 7)
+  - `disconnect` — status DISCONNECTED, config saqlanadi
+- [x] **IntegrationsController** — `/integrations` GET/`:type` GET/PUT/`:type/test`/`:type/disconnect`. **Faqat TENANT_ADMIN** (RolesGuard).
+- [x] **Super-admin Settings**:
+  - TenantsController: PATCH `/tenants/:id/status`, PATCH `/tenants/:id/limits` (SUPER_ADMIN)
+  - PlatformController: GET/PUT `/platform/settings` (default STT/LLM provayder + default limitlar; `__system__` tenant settings'da)
 
-### Smoke-test (asosiy talab)
-- [x] **`apps/backend/test/smoke.spec.ts`** — full pipeline jest spec. Bitta test 6 qadamni ketma-ket bajaradi:
-  1. AMI inbound call → `CallsService.completed` → Call row
-  2. STT job (`runSttJob` + MockSttAdapter) → Transcript row
-  3. Analysis job (`runAnalysisJob` + MockLlmAdapter) → Analysis row
-  4. QA job (`runQaJob`) → QAScore row (4-mezonli 70 max)
-  5. Trigger config (`card.moved` → `stageWonId`, action: `sms`) + Card create + move
-  6. **Trigger → SMS yuboriladi** — MockSmsAdapter.sent va SmsLog.SENT tasdiqlanadi
+### Xavfsizlik (5.11.3) — barchasi bajarildi
+1. ✅ Sirlar AES-256-GCM bilan shifrlangan (DB'da plaintext yo'q — test tasdiqlaydi)
+2. ✅ Frontendga sirlar maskalanган (`••••••cret`); to'liq sir hech qachon qaytmaydi
+3. ✅ Faqat TENANT_ADMIN (RBAC; OPERATOR → 403 — e2e tasdiqlandi)
+4. ✅ Har o'zgarish AuditLog'da (sirlarsiz — faqat field nomlari, secret nomlari ham chiqarib tashlanadi)
+5. ✅ Multi-tenant izolyatsiya (test: tenant B tenant A integratsiyasini ko'rmaydi)
+6. ✅ OAuth (Inbox/Telegram) — token orqali, parol so'ralmaydi
+7. ✅ Test natijasi umumiy, ichki sir/token oshkor qilinmaydi
 
-### README + Hujjatlar
-- [x] **README.md** to'liq qayta yozildi: imkoniyatlar matritsasi, stack, monorepo struktura, dev quick-start, **prod deploy yo'riqnomasi** (SSL, env, backup cron), port xaritasi, konfiguratsiya env vars, mock → real adapter ko'chish yo'li.
-- [x] **DECISIONS.md** 47 ta qaror — M0..M11 to'liq.
+### ⚠️ Yo'l-yo'lakay topilgan va tuzatilgan bug
+- **Prisma tenant-extension `TENANT_SCOPED_MODELS` ro'yxati eskirgan edi** — M1'dan keyin qo'shilgan `InboxThread`, `InboxMessage`, `Integration` modellari ro'yxatda yo'q edi → `prisma.t.X` so'rovlari tenant bo'yicha filtrlanmasdi (cross-tenant leak). Ro'yxatga qo'shildi va test bilan tasdiqlandi.
+- **`QueueModule` + `TranscriptsModule` AppModule'ga ulanmagan edi** (M7/M8'da app.module commit'iga tushmay qolган) → `/internal/transcripts` va STT enqueue ishlamasdi. Endi ulandi (`IntegrationsModule` bilan birga).
+
+### Frontend
+- [x] **SettingsPage** (`/settings`) — 4 ta integratsiya karta: status badge (ulangan ✓ / xato / ulanmagan), "Sozlash" forma (har tur uchun maydonlar; sirlar password-uslub + "bo'sh qoldiring" hint), Saqlash / Tekshirish / Uzish tugmalari. TENANT_ADMIN emas bo'lsa — ogohlantirish.
+- [x] **useIntegrations** hooklar (list/save/test/disconnect)
+- [x] AppLayout nav: "Sozlamalar" link; router `/settings`
 
 ### Verification
 - [x] `pnpm build` — 5 paket xatosiz
-- [x] `pnpm test` — **58/58 yashil** (10 ta test suite, jumladan smoke + tenant izolyatsiya + barcha M1..M10)
-- [x] Smoke-test alohida `--testPathPattern=smoke` orqali ham yashil (1/1, 114 ms)
-- [x] Acoustic seed ishga tushdi va 22 filial + 5 user yaratdi
-- [x] feat(milestone-11) commit + push origin/main
+- [x] `pnpm test` — **69/69 yashil** (11 suite; 11 yangi integratsiya spec)
+- [x] **E2E**: PUT FreePBX → javobda `••••••cret`; DB'da plaintext sir yo'q + `_encrypted` bor; OPERATOR → 403
+- [x] feat(settings-integrations) commit + push
 
-## Test xulosa (final)
-
-| Test suite | Specs |
+## Atrof-muhit
+| Xizmat | Host port |
 |---|---|
-| tenant-isolation.spec.ts | 5 (multi-tenant invariant) |
-| contacts-leads.spec.ts | 8 (M2) |
-| kanban.spec.ts | 10 (M3) |
-| sms.spec.ts | 6 (M5) — M4 trigger orqali ham tekshiriladi |
-| calls.spec.ts | 5 (M6) |
-| stt.spec.ts | 4 (M7) |
-| qa.spec.ts | 6 (M8) |
-| analytics.spec.ts | 5 (M9) |
-| inbox.spec.ts | 8 (M10 — guardrails) |
-| **smoke.spec.ts** | **1 (M11 — full pipeline)** |
-| **JAMI** | **58/58 yashil** |
+| Backend | 3005 | Frontend 5173 | Telephony-worker 3008 | Postgres 5435 | Redis 6380 | MinIO 9100/9101 |
 
-## Atrof-muhit (final)
-| Xizmat | Dev port | Prod (containerda) |
-|---|---|---|
-| Backend | 3005 | 3001 (internal) |
-| Frontend | 5173 | 80 (internal, nginx orqali) |
-| Telephony-worker | 3008 | 3008 (internal) |
-| ai-worker | — | — |
-| Postgres / Redis / MinIO / Nginx | 5435/6380/9100/8082 (dev) | internal / 80,443 public |
+## Konfiguratsiya (yangi)
+- **`ENCRYPTION_KEY`** — integratsiya sirlarini shifrlash uchun (>=16 belgi; prod'da 32+ random). **Majburiy** integratsiyalar ishlashi uchun.
 
-## Keyingi qadamlar (loyiha tugagandan keyin)
-Loyiha **tugatildi**. Quyidagilar real customer onboarding'da to'ldiriladi:
-1. **Real Asterisk PBX ulanish** — `AsteriskAmiClient.connect()` + `asterisk-manager` npm
-2. **Real Whisper STT** — `WhisperSttAdapter.transcribe()` + diarization (pyannote service)
-3. **Real Claude LLM** — `ClaudeLlmAdapter` + `@anthropic-ai/sdk` (prompts allaqachon `prompts/*.v1.md`)
-4. **Real Graph API inbox** — Instagram/Facebook webhook signature verification + send to Graph API
-5. **Node.js 20+** — Dockerfile'larda allaqachon node:20-alpine; dev environment'da yangilash
-6. **GIN index** `Contact.phones` — raw SQL migration million qatorga yaqinlashganda
+## Keyingi aniq qadam
+Integratsiyalarni realga ulash: SMS modul (M5) va telephony-worker (M6) hozir env/Tenant.settings dan o'qiydi — ularni `IntegrationsService.getDecryptedConfig(tenantId, type)` ga o'tkazish (saqlangan, shifrlangan config'ni ishlatish). Bu keyingi kichik iteratsiya.
 
 ## Ochiq savollar / bloklar
-**Yo'q.** Mahsulot prod deploy uchun tayyor.
+1. **Node.js 18.19.1** — EOL yaqin; Dockerfile'lar node:20.
+2. **Real adapterlar** (Asterisk/Whisper/Claude/Graph API) — interfeyslar tayyor; customer onboarding'da ulanadi.

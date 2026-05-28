@@ -70,3 +70,16 @@ export enum SupportedLanguage {
   RU = "ru",
   EN = "en",
 }
+
+export enum IntegrationType {
+  FREEPBX = "FREEPBX",
+  SMS = "SMS",
+  TELEGRAM = "TELEGRAM",
+  INBOX = "INBOX",
+}
+
+export enum IntegrationStatus {
+  CONNECTED = "CONNECTED",
+  DISCONNECTED = "DISCONNECTED",
+  ERROR = "ERROR",
+}

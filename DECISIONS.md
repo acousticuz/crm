@@ -375,3 +375,24 @@ Operator drafni tahrirlasa va approve qilsa, **qayta sensitivity tekshiriladi** 
 **Qaror:** Smoke-test (`apps/backend/test/smoke.spec.ts`) `pnpm test` ichida ishlatiladi va boshqa specs bilan birga dev Postgres'da yuradi. Mock AMI/STT/LLM/SMS adapter'lar ishlatilgan. Real provayderlar bilan smoke M11 deploy'dan keyin staging muhitda ishlatiladi.
 
 **Sabab:** Smoke jest spec sifatida — CI-friendly va boshqa testlarning fixture cleanup pattern'iga mos. Real adapter'lar test'da network/api kvota/auth/flaky bo'lardi. Mock'lar Acoustic talab qiladigan pipeline xulqi shaklini tasdiqlaydi: call → transcript → analysis → QA → trigger → SMS — har transition saqlanadi, retry idempotent, multi-tenant izolyatsiya buzilmaydi.
+
+---
+
+## §50. Integration secrets — AES-256-GCM, encrypted-at-rest, masked — Settings
+**Qaror:** Integratsiya sirlari (AMI secret, SMS API key/password, Telegram bot token, Page access token) AES-256-GCM bilan shifrlanadi. Kalit `ENCRYPTION_KEY` env'dan scrypt orqali 32 baytga keltiriladi. `Integration.config` JSON'da public maydonlar ochiq, sirlar `_encrypted` sub-object'da `iv:tag:cipher` base64 formatda. API javobida sirlar maskalanadi (`••••••1234` — oxirgi 4); `getDecryptedConfig` faqat backend-ichki.
+
+**Sabab:** SETTINGS_MODULE.md §5.11.3 #1/#2 majburiy. AES-256-GCM authenticated encryption (tamper-detection). scrypt-derivation har uzunlikdagi env input'ni qabul qiladi va brute-force'ni sekinlashtiradi. `_encrypted` ajratilgani — public maydonlar (host, port) ustidan filter/qidiruv oson, sirlar esa hech qachon plaintext indekslanmaydi. Maskalash "keep existing on edit" pattern'ini ham yoqadi (frontend maskani qaytarsa, eski sir saqlanadi).
+
+---
+
+## §51. TENANT_SCOPED_MODELS ro'yxatini sinxron saqlash — kritik
+**Qaror:** Prisma tenant-extension'dagi `TENANT_SCOPED_MODELS` Set'iga `tenantId` ustuni bo'lgan HAR yangi model qo'shilishi SHART. Settings ishida topildi: `InboxThread`, `InboxMessage`, `Integration` ro'yxatda yo'q edi → `prisma.t.X` ular uchun tenant filtri qo'ymasdi (cross-tenant leak). Tuzatildi + test qo'shildi.
+
+**Sabab:** Extension hardcoded model ro'yxatiga tayanadi (Prisma DMMF dinamik o'qish o'rniga — type-safety va aniqlik uchun). Bu ro'yxat schema bilan qo'lda sinxronlanadi — yangi tenant-scoped model qo'shganda ro'yxatga qo'shishni unutmaslik kerak. Kelajakda: schema generatsiyasidan ro'yxatni avtomatik chiqarish (M12+ texnik qarz). Hozircha integratsiya testi cross-tenant leak'ni ushlaydi.
+
+---
+
+## §52. Super-admin platform settings on __system__ tenant — Settings
+**Qaror:** Platform-darajadagi defaultlar (default STT/LLM provayder, default limitlar) alohida jadval o'rniga `__system__` tenant'ning `settings.platform` JSON'ida saqlanadi. Per-tenant limitlar esa har tenant'ning `settings.limits` da.
+
+**Sabab:** Yangi `PlatformSetting` jadvali migration churn qo'shadi; `__system__` tenant allaqachon seed'da yaratilgan singleton. Settings JSON moslashuvchan (yangi default qo'shish migration talab qilmaydi). Super-admin kam o'zgartiradigan global sozlama uchun yetarli.

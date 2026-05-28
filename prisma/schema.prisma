@@ -79,6 +79,19 @@ enum LeadStatus {
   REJECTED
 }
 
+enum IntegrationType {
+  FREEPBX
+  SMS
+  TELEGRAM
+  INBOX
+}
+
+enum IntegrationStatus {
+  CONNECTED
+  DISCONNECTED
+  ERROR
+}
+
 // ====================== Tenant ======================
 
 model Tenant {
@@ -111,6 +124,7 @@ model Tenant {
   auditLogs        AuditLog[]
   inboxThreads     InboxThread[]
   inboxMessages    InboxMessage[]
+  integrations     Integration[]
 
   @@index([status])
   @@map("tenants")
@@ -650,4 +664,32 @@ model InboxMessage {
   @@index([tenantId, status])
   @@index([threadId, createdAt])
   @@map("inbox_messages")
+}
+
+// ====================== Integration (Settings module) ======================
+//
+// Per-tenant connection settings for external systems. The `config` JSON
+// stores non-secret fields in clear and secret fields encrypted in a
+// `_encrypted` sub-object (AES-256-GCM, app layer). Secrets are decrypted
+// only inside the backend; the API masks them (last 4 chars) for the
+// frontend. One row per (tenantId, type).
+
+model Integration {
+  id             String            @id @default(cuid())
+  tenantId       String
+  type           IntegrationType
+  provider       String?
+  config         Json              @default("{}")
+  status         IntegrationStatus @default(DISCONNECTED)
+  lastTestedAt   DateTime?
+  lastTestResult Json?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  deletedAt      DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, type])
+  @@index([tenantId])
+  @@map("integrations")
 }

@@ -4,6 +4,7 @@ import { LoginPage } from "@/pages/LoginPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { KanbanPage } from "@/pages/KanbanPage";
 import { InboxPage } from "@/pages/InboxPage";
+import { SettingsPage } from "@/pages/SettingsPage";
 import { ScorecardPage } from "@/pages/ScorecardPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { useAuth } from "@/lib/auth";
@@ -32,6 +33,7 @@ export const router = createBrowserRouter([
       { path: "dashboard", element: <DashboardPage /> },
       { path: "kanban", element: <KanbanPage /> },
       { path: "inbox", element: <InboxPage /> },
+      { path: "settings", element: <SettingsPage /> },
       { path: "scorecard/:callId", element: <ScorecardPage /> },
     ],
   },

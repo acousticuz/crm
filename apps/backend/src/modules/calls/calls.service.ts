@@ -15,7 +15,7 @@ import {
   UserRole,
 } from "@acoustic-crm/shared";
 import { readContext } from "../../common/tenant-context";
-import { normalizePhone } from "../../common/phone";
+import { normalizePhone, tryNormalizePhone } from "../../common/phone";
 import { PrismaService } from "../prisma/prisma.service";
 import { RealtimeService } from "../realtime/realtime.service";
 import {
@@ -50,7 +50,13 @@ export class CallsService {
    * lookup so the right operator sees the caller's card.
    */
   async incoming(dto: CallIncomingDto) {
-    const fromNorm = normalizePhone(dto.fromNumber);
+    const fromNorm = tryNormalizePhone(dto.fromNumber);
+    // Internal/Local channels (empty or feature-code caller IDs) aren't real
+    // customer calls — acknowledge without screen-pop so the worker doesn't
+    // retry on a 500.
+    if (!fromNorm) {
+      return { matched: false, contactId: null, cardId: null, ignored: true };
+    }
     const contact = await this.prisma.t.contact.findFirst({
       where: { phones: { has: fromNorm }, deletedAt: null },
       select: { id: true, fullName: true, phones: true, email: true },
@@ -78,21 +84,22 @@ export class CallsService {
    * Task assigned to the operator (or, when no operator, the first admin).
    */
   async completed(dto: CallCompletedDto) {
-    const fromNorm = normalizePhone(dto.fromNumber);
-    const toNorm = (() => {
-      try {
-        return normalizePhone(dto.toNumber);
-      } catch {
-        return dto.toNumber;
-      }
-    })();
+    // Be tolerant of empty/internal channel numbers — store the raw value as
+    // a fallback so the Call row is never lost, even if it can't be matched
+    // to a contact.
+    const fromNorm = tryNormalizePhone(dto.fromNumber) ?? (dto.fromNumber || "unknown");
+    const toNorm = tryNormalizePhone(dto.toNumber) ?? (dto.toNumber || "unknown");
 
     // Find the contact that owns the customer-side number (depending on
-    // direction). Then find an open card linked to that contact.
+    // direction). Then find an open card linked to that contact. Only search
+    // when we have a usable, normalized number.
     const customerPhone = dto.direction === CallDirection.INBOUND ? fromNorm : toNorm;
-    const contact = await this.prisma.t.contact.findFirst({
-      where: { phones: { has: customerPhone }, deletedAt: null },
-    });
+    const customerPhoneUsable = tryNormalizePhone(customerPhone);
+    const contact = customerPhoneUsable
+      ? await this.prisma.t.contact.findFirst({
+          where: { phones: { has: customerPhoneUsable }, deletedAt: null },
+        })
+      : null;
     const card = contact
       ? await this.prisma.t.card.findFirst({
           where: { contactId: contact.id, deletedAt: null, status: "OPEN" },

@@ -29,3 +29,21 @@ export function normalizePhone(input: string): string {
 export function normalizePhones(phones: string[]): string[] {
   return Array.from(new Set(phones.map((p) => normalizePhone(p))));
 }
+
+/**
+ * Non-throwing variant. Returns null when the input has no usable digits —
+ * useful for telephony events (Asterisk emits internal/Local channels with
+ * empty caller IDs that aren't real customer numbers).
+ */
+export function tryNormalizePhone(input: string | null | undefined): string | null {
+  if (!input) return null;
+  const cleaned = input.trim().replace(/[^\d+]/g, "");
+  if (!cleaned || cleaned === "+") return null;
+  // Reject obviously non-dialable values (e.g. single digit feature codes).
+  if (cleaned.replace(/\D/g, "").length < 3) return null;
+  try {
+    return normalizePhone(input);
+  } catch {
+    return null;
+  }
+}

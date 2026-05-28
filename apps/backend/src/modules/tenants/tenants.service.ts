@@ -1,4 +1,4 @@
-import { ConflictException, Injectable } from "@nestjs/common";
+import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { randomBytes } from "node:crypto";
 import { UserRole } from "@acoustic-crm/shared";
 import { PrismaService } from "../prisma/prisma.service";
@@ -127,5 +127,74 @@ export class TenantsService {
 
   async findById(id: string) {
     return this.prisma.t.tenant.findFirst({ where: { id, deletedAt: null } });
+  }
+
+  // ===== Super-admin: status + limits =====
+  // These span tenants, so they use the base prisma client (the caller is a
+  // SUPER_ADMIN whose CLS tenantId is the system tenant). RBAC is enforced at
+  // the controller.
+
+  async setStatus(id: string, status: "ACTIVE" | "SUSPENDED" | "TRIAL") {
+    const tenant = await this.prisma.tenant.findFirst({ where: { id, deletedAt: null } });
+    if (!tenant) throw new NotFoundException("Tenant not found");
+    return this.prisma.tenant.update({
+      where: { id },
+      data: { status },
+      select: { id: true, name: true, status: true },
+    });
+  }
+
+  /** Persists per-tenant system limits under Tenant.settings.limits. */
+  async setLimits(id: string, limits: { maxUsers?: number; maxCallsPerMonth?: number }) {
+    const tenant = await this.prisma.tenant.findFirst({ where: { id, deletedAt: null } });
+    if (!tenant) throw new NotFoundException("Tenant not found");
+    const settings = (tenant.settings as Record<string, unknown> | null) ?? {};
+    const merged = {
+      ...settings,
+      limits: { ...((settings.limits as object) ?? {}), ...limits },
+    };
+    return this.prisma.tenant.update({
+      where: { id },
+      data: { settings: merged as object },
+      select: { id: true, name: true, settings: true },
+    });
+  }
+
+  // ===== Super-admin: platform defaults (STT/LLM) on the __system__ tenant =====
+
+  private async systemTenant() {
+    const sys = await this.prisma.tenant.findFirst({ where: { name: "__system__" } });
+    if (!sys) throw new NotFoundException("System tenant not found (run seed)");
+    return sys;
+  }
+
+  async getPlatformSettings() {
+    const sys = await this.systemTenant();
+    const settings = (sys.settings as Record<string, unknown> | null) ?? {};
+    const platform = (settings.platform as Record<string, unknown> | undefined) ?? {};
+    return {
+      defaultSttProvider: platform.defaultSttProvider ?? "mock",
+      defaultLlmProvider: platform.defaultLlmProvider ?? "mock",
+      defaultLimits: platform.defaultLimits ?? { maxUsers: 50, maxCallsPerMonth: 100000 },
+    };
+  }
+
+  async setPlatformSettings(input: {
+    defaultSttProvider?: string;
+    defaultLlmProvider?: string;
+    defaultLimits?: { maxUsers?: number; maxCallsPerMonth?: number };
+  }) {
+    const sys = await this.systemTenant();
+    const settings = (sys.settings as Record<string, unknown> | null) ?? {};
+    const platform = (settings.platform as Record<string, unknown> | undefined) ?? {};
+    const merged = {
+      ...settings,
+      platform: { ...platform, ...input },
+    };
+    await this.prisma.tenant.update({
+      where: { id: sys.id },
+      data: { settings: merged as object },
+    });
+    return this.getPlatformSettings();
   }
 }
