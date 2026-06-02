@@ -206,4 +206,36 @@ describe("Settings — Integrations (encryption, masking, RBAC, audit)", () => {
     expect(typeof result.ok).toBe("boolean");
     expect(result.message).not.toContain("bogus-token-value");
   }, 20000);
+
+  // Regression: the SMS form saves the provider in the row column (not in
+  // config), so the decryption path that test() uses MUST inject it back in,
+  // otherwise testSms hits the empty-provider branch and reports "Provayder
+  // tanlanmagan" even after a successful save.
+  it("SMS: provider survives the round-trip from upsert → getDecryptedConfig → test()", async () => {
+    await asTenant(tenantId, () =>
+      integrations.upsert(IntegrationType.SMS, {
+        provider: "eskiz",
+        config: { login: "test@test.uz", password: "x", sender: "Acoustic" },
+      }),
+    );
+
+    const cfg = await integrations.getDecryptedConfig(tenantId, IntegrationType.SMS);
+    expect(cfg?.provider).toBe("eskiz");
+    expect(cfg?.login).toBe("test@test.uz");
+    expect(cfg?.password).toBe("x"); // decrypted for backend use
+
+    // Stub Eskiz so we don't hit the real API. The point of the test is that
+    // testSms reaches the provider branch (eskiz) — i.e. it does NOT short-
+    // circuit with "Provayder tanlanmagan".
+    const fetchSpy = jest.spyOn(global, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ data: { token: "fake-jwt" } }), { status: 200 }),
+    );
+    try {
+      const result = await asTenant(tenantId, () => integrations.test(IntegrationType.SMS));
+      expect(result.message).not.toMatch(/Provayder tanlanmagan/);
+      expect(result.ok).toBe(true);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  }, 20000);
 });

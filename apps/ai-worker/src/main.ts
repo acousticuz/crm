@@ -8,6 +8,8 @@ import { GoogleChirpSttAdapter } from "./stt/google-chirp.stt";
 import type { SttAdapter } from "./stt/stt-adapter";
 import { MockLlmAdapter } from "./llm/mock.llm";
 import { ClaudeLlmAdapter } from "./llm/claude.llm";
+import { OpenAiLlmAdapter } from "./llm/openai.llm";
+import { FallbackLlmAdapter } from "./llm/fallback.llm";
 import type { LlmAdapter } from "./llm/llm-adapter";
 import { BackendClient } from "./backend.client";
 import { runSttJob, type SttJobData } from "./sttJob";
@@ -49,11 +51,26 @@ function buildSttAdapter(): SttAdapter {
 
 function buildLlmAdapter(): LlmAdapter {
   const provider = process.env.LLM_PROVIDER ?? "mock";
-  if (provider === "claude") {
-    return new ClaudeLlmAdapter({
+  const claude = (): ClaudeLlmAdapter =>
+    new ClaudeLlmAdapter({
       apiKey: process.env.ANTHROPIC_API_KEY ?? "",
       model: process.env.ANTHROPIC_MODEL ?? process.env.LLM_MODEL,
     });
+  const openai = (): OpenAiLlmAdapter =>
+    new OpenAiLlmAdapter({
+      apiKey: process.env.OPENAI_API_KEY ?? "",
+      baseUrl: process.env.OPENAI_BASE_URL,
+      // OPENAI_MODEL is chat-only; OPENAI_STT_MODEL is for STT and must not be reused.
+      model: process.env.OPENAI_MODEL,
+    });
+  if (provider === "openai") return openai();
+  if (provider === "claude") {
+    // Wrap in fallback when an OpenAI key is also configured so a Claude
+    // outage / credit exhaustion doesn't kill the analysis pipeline.
+    if (process.env.OPENAI_API_KEY) {
+      return new FallbackLlmAdapter(claude(), openai());
+    }
+    return claude();
   }
   return new MockLlmAdapter();
 }

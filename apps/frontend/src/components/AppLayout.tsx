@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth";
 
 const navItems = [
   { to: "/kanban", label: "Kanban" },
+  { to: "/calls", label: "Qo'ng'iroqlar" },
   { to: "/inbox", label: "Inbox" },
   { to: "/dashboard", label: "Dashboard" },
   { to: "/settings", label: "Sozlamalar" },

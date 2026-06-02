@@ -2,9 +2,22 @@
 
 ## Holat
 - **Asosiy 11 milestone + Settings + Call-fixes + Integration-runtime + Operator-extension tugatildi** 🎉
-- Joriy ish: **Click-to-call'ni real PJSIP extension'ga bog'lash**
+- Joriy ish: **3 ta bug fix — Kanban add-stage, SMS provider, sip: click-to-call**
 - Status: **done**
 - Repo: https://github.com/acousticuz/crm
+
+## Bug fixes (2026-06-02)
+- [x] **Kanban yangi ustun qo'shish**: `usePipelineAdmin.ts` createStage/updateStage/updatePipeline body'dan path param'lar (`pipelineId`/`stageId`/`id`) destructure orqali ajratiladi. Backend `ValidationPipe({ forbidNonWhitelisted: true })` endi 400 qaytarmaydi. Real HTTP test (`apps/backend/test/pipelines-http.spec.ts`, supertest + JwtAuthGuard override + Cls middleware) regression guard qo'shildi — yangi 4 ta test 201/400/200/200 ni tasdiqlaydi.
+- [x] **SMS "Provayder tanlanmagan"**: `IntegrationsService.test()` ichki `decryptedForTenant()` o'chirildi, hammasi `getDecryptedConfig()`'ga ko'chirildi (provider injection bilan bitta manba). Regression test (`integrations.spec.ts`): `provider: "eskiz"` saqlangach `test()` `Provayder tanlanmagan` shoxiga tushmaydi. SMS yuborish allaqachon `getDecryptedConfig` ishlatib to'g'ri ishlardi — endi "Tekshirish" tugmasi ham to'g'ri.
+- [x] **Click-to-call → sip: link (MicroSIP)**: `CardDetailSheet.tsx` va `CallsPage.tsx`'da AMI Originate o'rniga `sip:998xxxxxxxxx` URI (raqam, `+` siz). Operator brauzeridagi protocol handler MicroSIP'ni ochadi; AMI eventlari OUTBOUND'ni avtomatik yozadi. `useOriginateCall` hook va `POST /calls/originate` endpoint kelajak uchun codebase'da qoldi.
+
+### Verifikatsiya
+- `pnpm build` — 5 paket xatosiz.
+- `pnpm test` — backend **95/95** (90 + SMS regression + 4 HTTP test), telephony-worker 4/4, ai-worker echo.
+- `pnpm lint` — 0 xato/0 ogohlantirish.
+- pm2: `acoustic-backend` reload qilindi. Worker'lar tegilmadi.
+- commit `fix(kanban-sms-call): stage add, sms provider, sip-link calling` + push.
+
 
 ## Bajarilgan ishlar
 - [x] **M0–M11** — to'liq CRM

@@ -5,6 +5,8 @@ import {
   useIncomingCallListener,
   type IncomingCallPayload,
 } from "@/hooks/useKanban";
+import { isPlaceholderContact } from "@/hooks/useContacts";
+import { SaveUnknownContactForm } from "@/components/contacts/SaveUnknownContactForm";
 
 /**
  * Renders a fixed-position "screen-pop" notification when an inbound call
@@ -13,18 +15,25 @@ import {
  */
 export function IncomingCallToast(): JSX.Element | null {
   const [active, setActive] = useState<IncomingCallPayload | null>(null);
+  const [showSaveForm, setShowSaveForm] = useState(false);
 
   useIncomingCallListener((payload) => {
     setActive(payload);
+    setShowSaveForm(false);
   });
 
   useEffect(() => {
     if (!active) return;
+    // Don't auto-dismiss while the operator is entering a contact name —
+    // losing the form mid-typing would be infuriating.
+    if (showSaveForm) return;
     const t = setTimeout(() => setActive(null), 30_000);
     return () => clearTimeout(t);
-  }, [active]);
+  }, [active, showSaveForm]);
 
   if (!active) return null;
+
+  const isPlaceholder = isPlaceholderContact(active.contact?.fullName);
 
   return (
     <div className="fixed bottom-6 right-6 z-50 w-80 rounded-lg border bg-card shadow-xl">
@@ -45,7 +54,7 @@ export function IncomingCallToast(): JSX.Element | null {
         </button>
       </div>
       <div className="p-3 text-sm">
-        {active.contact ? (
+        {active.contact && !isPlaceholder ? (
           <>
             <p className="font-medium">{active.contact.fullName}</p>
             {active.contact.email && (
@@ -62,8 +71,6 @@ export function IncomingCallToast(): JSX.Element | null {
                 className="mt-2 w-full"
                 onClick={() => {
                   setActive(null);
-                  // Best-effort deep-link to the card; KanbanPage doesn't yet
-                  // accept a query param to auto-open, but we navigate there.
                   window.location.assign(`/kanban#card=${active.card?.id ?? ""}`);
                 }}
               >
@@ -72,9 +79,49 @@ export function IncomingCallToast(): JSX.Element | null {
             )}
           </>
         ) : (
-          <p className="text-xs text-muted-foreground">
-            Bu raqamga mos kontakt topilmadi — javob bering va yangi kontakt yarating.
-          </p>
+          <>
+            <p className="text-xs text-muted-foreground">
+              Bu raqam kontaktlarda yo'q ({active.contact?.fullName ?? "Noma'lum"} sifatida saqlandi).
+              Mijoz ismini kiriting:
+            </p>
+            {active.contact && showSaveForm ? (
+              <div className="mt-2">
+                <SaveUnknownContactForm
+                  contactId={active.contact.id}
+                  phone={active.fromNumber}
+                  variant="stacked"
+                  onSaved={() => {
+                    setShowSaveForm(false);
+                    setActive(null);
+                  }}
+                  onCancel={() => setShowSaveForm(false)}
+                />
+              </div>
+            ) : (
+              active.contact && (
+                <Button
+                  size="sm"
+                  className="mt-2 w-full"
+                  onClick={() => setShowSaveForm(true)}
+                >
+                  Kontakt sifatida saqlash
+                </Button>
+              )
+            )}
+            {active.card && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-2 w-full"
+                onClick={() => {
+                  setActive(null);
+                  window.location.assign(`/kanban#card=${active.card?.id ?? ""}`);
+                }}
+              >
+                Kartani ochish
+              </Button>
+            )}
+          </>
         )}
       </div>
     </div>

@@ -196,7 +196,12 @@ export class IntegrationsService {
 
   async test(type: IntegrationType) {
     const tenantId = this.currentTenantId();
-    const config = await this.decryptedForTenant(tenantId, type);
+    // Single source of truth for decrypted reads: getDecryptedConfig also
+    // injects `row.provider` into the returned config, which testSms needs.
+    // Previously this used a parallel decryptedForTenant() that stripped
+    // the provider — that's what produced "Provayder tanlanmagan" after a
+    // successful save.
+    const config = await this.getDecryptedConfig(tenantId, type);
     if (!config) {
       throw new NotFoundException("Integration not configured yet");
     }
@@ -289,13 +294,6 @@ export class IntegrationsService {
     return out;
   }
 
-  private async decryptedForTenant(tenantId: string, type: IntegrationType) {
-    const row = await this.prisma.t.integration.findFirst({ where: { type, deletedAt: null } });
-    if (!row) return null;
-    void tenantId;
-    return this.decryptConfig(row.config as StoredConfig);
-  }
-
   /** Mask secrets for safe API output. */
   private toMasked(row: {
     type: string;
@@ -347,9 +345,10 @@ export class IntegrationsService {
         default:
           return { ok: false, message: "Noma'lum integratsiya turi" };
       }
-    } catch {
+    } catch (err) {
       // SECURITY: never leak internal/provider error details (may contain
-      // tokens). Always a generic message.
+      // tokens). Always a generic message; raw error goes to server logs only.
+      this.logger.warn(`Integration test ${type} threw: ${(err as Error).message}`);
       return { ok: false, message: "Ulanish muvaffaqiyatsiz" };
     }
   }
@@ -404,18 +403,54 @@ export class IntegrationsService {
     try {
       if (provider === "eskiz") {
         const base = (process.env.ESKIZ_BASE_URL ?? "https://notify.eskiz.uz/api").replace(/\/$/, "");
+        const login = String(config.login ?? "").trim();
+        const password = String(config.password ?? "");
+        const token = String(config.apiKey ?? "").trim();
+        // Prefer the long-lived token when present: hits /auth/user with the
+        // bearer, which 401s on an invalid/expired token. Otherwise fall back
+        // to email+password login.
+        if (token) {
+          const userRes = await fetch(`${base}/auth/user`, {
+            headers: { Authorization: `Bearer ${token}` },
+            signal: controller.signal,
+          });
+          if (userRes.ok) {
+            const j = (await userRes.json().catch(() => ({}))) as {
+              data?: { email?: string; balance?: number; name?: string };
+            };
+            const who = j.data?.email ?? j.data?.name ?? "ulandi";
+            const bal =
+              typeof j.data?.balance === "number" ? `, balans: ${j.data.balance}` : "";
+            return { ok: true, message: `Eskiz token amalda (${who}${bal})` };
+          }
+          if (userRes.status === 401) {
+            return { ok: false, message: "Eskiz token yaroqsiz yoki muddati o'tgan" };
+          }
+          // Token check returned an unexpected status — fall through to login
+          // if credentials are also present, otherwise surface a clean message.
+          if (!login || !password) {
+            return { ok: false, message: `Eskiz token tekshiruvi: HTTP ${userRes.status}` };
+          }
+        }
+        if (!login || !password) {
+          return { ok: false, message: "Email/parol yoki API kalit kiritilmagan" };
+        }
         const body = new URLSearchParams();
-        body.set("email", String(config.login ?? ""));
-        body.set("password", String(config.password ?? ""));
+        body.set("email", login);
+        body.set("password", password);
         const res = await fetch(`${base}/auth/login`, {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: body.toString(),
           signal: controller.signal,
         });
-        return res.ok
-          ? { ok: true, message: "Eskiz auth muvaffaqiyatli" }
-          : { ok: false, message: "Eskiz auth muvaffaqiyatsiz" };
+        if (res.ok) return { ok: true, message: "Eskiz email/parol auth muvaffaqiyatli" };
+        // Eskiz returns a small JSON like {"message":"Invalid credentials"} —
+        // surface its text so the operator knows what to fix. We strip any
+        // secrets the response can't contain.
+        const j = (await res.json().catch(() => ({}))) as { message?: string };
+        const reason = j.message ? `: ${j.message}` : "";
+        return { ok: false, message: `Eskiz auth xato${reason} (HTTP ${res.status})` };
       }
       if (provider === "playmobile") {
         const base = (process.env.PLAYMOBILE_BASE_URL ?? "https://send.smsxabar.uz/broker-api").replace(/\/$/, "");

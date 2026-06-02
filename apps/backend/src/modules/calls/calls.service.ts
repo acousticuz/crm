@@ -492,6 +492,29 @@ export class CallsService {
     });
   }
 
+  /**
+   * Tenant-wide recent calls feed for the Calls page. Surfaces the contact
+   * (so the UI can flag "Noma'lum" rows and offer a quick rename) and the
+   * linked card. `missedOnly` filters to MISSED rows, used by the dashboard's
+   * "missed calls" tile.
+   */
+  listRecent(opts: { limit?: number; missedOnly?: boolean }) {
+    const take = Math.min(Math.max(opts.limit ?? 100, 1), 500);
+    return this.prisma.t.call.findMany({
+      where: {
+        deletedAt: null,
+        ...(opts.missedOnly ? { status: CallStatus.MISSED } : {}),
+      },
+      orderBy: { startedAt: "desc" },
+      take,
+      include: {
+        operator: { select: { id: true, fullName: true } },
+        contact: { select: { id: true, fullName: true, phones: true } },
+        card: { select: { id: true, title: true } },
+      },
+    });
+  }
+
   async findById(id: string) {
     const call = await this.prisma.t.call.findFirst({
       where: { id, deletedAt: null },

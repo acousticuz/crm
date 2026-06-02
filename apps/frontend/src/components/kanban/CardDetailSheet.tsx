@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { Phone, MessageSquare, Plus } from "lucide-react";
+import { Phone, MessageSquare, Plus, Pencil } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -19,13 +19,14 @@ import {
   useCreateNote,
   useCreateTask,
   useDetachTag,
-  useOriginateCall,
   useScorecard,
   useSendSms,
   useSmsTemplates,
   useTags,
   useUsers,
 } from "@/hooks/useKanban";
+import { isPlaceholderContact } from "@/hooks/useContacts";
+import { SaveUnknownContactForm } from "@/components/contacts/SaveUnknownContactForm";
 
 interface Props {
   cardId: string | null;
@@ -43,7 +44,6 @@ export function CardDetailSheet({ cardId, onClose }: Props): JSX.Element {
   const createNote = useCreateNote();
   const createTask = useCreateTask();
   const sendSms = useSendSms();
-  const originateCall = useOriginateCall();
 
   const [noteText, setNoteText] = useState("");
   const [taskText, setTaskText] = useState("");
@@ -53,8 +53,10 @@ export function CardDetailSheet({ cardId, onClose }: Props): JSX.Element {
   const [smsTemplateId, setSmsTemplateId] = useState("");
   const [smsText, setSmsText] = useState("");
   const [smsError, setSmsError] = useState<string | null>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
 
   const attachedTagIds = new Set(card?.cardTags?.map((ct) => ct.tagId) ?? []);
+  const contactIsPlaceholder = card ? isPlaceholderContact(card.contact.fullName) : false;
 
   return (
     <Sheet open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
@@ -66,29 +68,57 @@ export function CardDetailSheet({ cardId, onClose }: Props): JSX.Element {
             <SheetHeader>
               <SheetTitle>{card.title}</SheetTitle>
               <SheetDescription>
-                {card.contact.fullName}
+                <span className={contactIsPlaceholder ? "text-amber-600 font-medium" : undefined}>
+                  {card.contact.fullName}
+                </span>
                 {card.contact.phones[0] && ` · ${card.contact.phones[0]}`}
+                {contactIsPlaceholder && !renameOpen && (
+                  <button
+                    type="button"
+                    onClick={() => setRenameOpen(true)}
+                    className="ml-2 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                  >
+                    <Pencil className="h-3 w-3" />
+                    Ismni kiriting
+                  </button>
+                )}
               </SheetDescription>
+              {contactIsPlaceholder && renameOpen && card.contact.phones[0] && (
+                <div className="mt-2 rounded border bg-amber-50 p-2 dark:bg-amber-950/30">
+                  <p className="mb-1.5 text-xs text-muted-foreground">
+                    Bu kontakt avtomatik yaratilgan. Mijoz ismini kiriting:
+                  </p>
+                  <SaveUnknownContactForm
+                    contactId={card.contact.id}
+                    phone={card.contact.phones[0]}
+                    variant="stacked"
+                    onSaved={() => setRenameOpen(false)}
+                    onCancel={() => setRenameOpen(false)}
+                  />
+                </div>
+              )}
             </SheetHeader>
 
             <section className="space-y-2">
               <h3 className="text-sm font-semibold">Aloqa</h3>
               <div className="flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={!card.contact.phones[0] || originateCall.isPending}
-                  onClick={() =>
-                    originateCall.mutate({
-                      toNumber: card.contact.phones[0],
-                      cardId: card.id,
-                      contactId: card.contact.id,
-                    })
+                {/* sip:NUMBER URI — OS opens the registered SIP handler (MicroSIP on
+                    operator desktops). FreePBX AMI events still log the OUTBOUND
+                    call automatically; no server round-trip needed here. */}
+                <a
+                  href={
+                    card.contact.phones[0]
+                      ? `sip:${card.contact.phones[0].replace(/^\+/, "")}`
+                      : undefined
                   }
+                  aria-disabled={!card.contact.phones[0]}
+                  className={!card.contact.phones[0] ? "pointer-events-none" : undefined}
                 >
-                  <Phone className="mr-1 h-4 w-4" />
-                  {originateCall.isPending ? "Ulanmoqda..." : "Qo'ng'iroq qilish"}
-                </Button>
+                  <Button size="sm" variant="outline" disabled={!card.contact.phones[0]}>
+                    <Phone className="mr-1 h-4 w-4" />
+                    Qo'ng'iroq qilish
+                  </Button>
+                </a>
                 <Button
                   size="sm"
                   variant="outline"
@@ -170,9 +200,6 @@ export function CardDetailSheet({ cardId, onClose }: Props): JSX.Element {
                   </div>
                 </div>
               )}
-              <p className="text-xs text-muted-foreground">
-                Qo'ng'iroq tugmasi M6 (FreePBX telefoniya) milestone'da ulanadi.
-              </p>
             </section>
 
             <section className="space-y-2">

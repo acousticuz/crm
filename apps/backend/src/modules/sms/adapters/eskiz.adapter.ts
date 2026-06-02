@@ -39,19 +39,16 @@ export class EskizSmsAdapter implements SmsAdapter {
       config.baseUrl ?? process.env.ESKIZ_BASE_URL ?? "https://notify.eskiz.uz/api"
     ).replace(/\/$/, "");
     try {
-      const token = await this.ensureToken(baseUrl, config);
-      const body = new URLSearchParams();
-      body.set("mobile_phone", input.phone.replace(/^\+/, ""));
-      body.set("message", input.text);
-      if (config.from) body.set("from", config.from);
-      const res = await fetch(`${baseUrl}/message/sms/send`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: body.toString(),
-      });
+      let token = await this.ensureToken(baseUrl, config, false);
+      let res = await this.sendOnce(baseUrl, token, input, config);
+      // Eskiz returns 401 when a token expires (~30 days). When we have email
+      // +password, drop the cache and try a fresh login exactly once — this
+      // is what kept failing silently for tenants whose saved token had aged
+      // out without the operator noticing.
+      if (res.status === 401 && config.email && config.password) {
+        token = await this.ensureToken(baseUrl, config, true);
+        res = await this.sendOnce(baseUrl, token, input, config);
+      }
       const json = (await res.json().catch(() => ({}))) as EskizSendResp;
       if (!res.ok) {
         return {
@@ -74,11 +71,42 @@ export class EskizSmsAdapter implements SmsAdapter {
     }
   }
 
-  private async ensureToken(baseUrl: string, cfg: EskizConfig): Promise<string> {
-    if (cfg.token) return cfg.token;
+  private async sendOnce(
+    baseUrl: string,
+    token: string,
+    input: SmsSendInput,
+    config: EskizConfig,
+  ): Promise<Response> {
+    const body = new URLSearchParams();
+    body.set("mobile_phone", input.phone.replace(/^\+/, ""));
+    body.set("message", input.text);
+    if (config.from) body.set("from", config.from);
+    return fetch(`${baseUrl}/message/sms/send`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: body.toString(),
+    });
+  }
+
+  private async ensureToken(
+    baseUrl: string,
+    cfg: EskizConfig,
+    forceRefresh: boolean,
+  ): Promise<string> {
+    // A saved long-lived token wins on the first call. On forceRefresh (401
+    // retry) we always re-login if creds are present, since the saved token
+    // is what just got rejected.
+    if (cfg.token && !forceRefresh) return cfg.token;
     const key = `${baseUrl}|${cfg.email ?? ""}`;
-    const cached = this.cachedTokens.get(key);
-    if (cached) return cached;
+    if (!forceRefresh) {
+      const cached = this.cachedTokens.get(key);
+      if (cached) return cached;
+    } else {
+      this.cachedTokens.delete(key);
+    }
     if (!cfg.email || !cfg.password) {
       throw new Error("Eskiz: token or email/password must be configured");
     }

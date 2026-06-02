@@ -96,9 +96,21 @@ export class CallsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.TENANT_ADMIN, UserRole.SUPERVISOR, UserRole.OPERATOR, UserRole.ANALYST)
   @Get("calls")
-  list(@Query("cardId") cardId?: string, @Query("contactId") contactId?: string) {
+  list(
+    @Query("cardId") cardId?: string,
+    @Query("contactId") contactId?: string,
+    @Query("recent") recent?: string,
+    @Query("limit") limit?: string,
+    @Query("missedOnly") missedOnly?: string,
+  ) {
     if (cardId) return this.calls.listByCard(cardId);
     if (contactId) return this.calls.listByContact(contactId);
+    if (recent === "true" || recent === "1") {
+      return this.calls.listRecent({
+        limit: limit ? Number(limit) : undefined,
+        missedOnly: missedOnly === "true" || missedOnly === "1",
+      });
+    }
     return [];
   }
 
