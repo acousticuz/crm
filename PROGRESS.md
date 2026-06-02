@@ -2,9 +2,24 @@
 
 ## Holat
 - **Asosiy 11 milestone + Settings + Call-fixes + Integration-runtime + Operator-extension tugatildi** 🎉
-- Joriy ish: **3 ta bug fix — Kanban add-stage, SMS provider, sip: click-to-call**
+- Joriy ish: **Eskiz template sync + template-only SMS yuborish**
 - Status: **done**
 - Repo: https://github.com/acousticuz/crm
+
+## SMS — Eskiz template-only rejim (2026-06-02)
+- [x] **Adapter `fetchTemplates`**: `EskizSmsAdapter.fetchTemplates()` Eskiz `/user/templates`'dan tasdiqlangan template'larni oladi. Token muddati o'tgan bo'lsa avto-refresh. Parser ham `data[]` ham `data.result[]` shakllarni tushunadi.
+- [x] **Sync endpoint** `POST /sms/templates/sync` (TENANT_ADMIN) — `SmsService.syncTemplatesFromProvider()` idempotent upsert `(tenantId, externalProvider, externalId)` unique key bo'yicha. Yangi schema kolonkalar: `externalProvider`, `externalId`, `externalStatus` + migratsiya `20260602160000_sms_template_external_id`.
+- [x] **Settings UI**: SMS Integration card'iga "Template'larni sync qilish" tugmasi (faqat Eskiz uchun ko'rinadi), "Erkin matn ruxsat" checkbox (default: off). `useSyncSmsTemplates` + `useSmsSettings` hook'lari.
+- [x] **Template-only yuborish**: CardDetailSheet SMS forma dropdown'da faqat template'lar. Eskiz status "service" emas bo'lsa option disabled (`moderation`/`rejected`). Preview filled vars (`{ism}`/`{sana}`/`{summa}`). Erkin matn faqat tenant `allowFreeText: true` qilsagina. Backend `sendManual` template'siz so'rovni `ForbiddenException` bilan rad qiladi.
+- [x] **Live "SMS yuborildi" indikator**: Kanban kartada oxirgi SMS badge'i (status + "yuborildi/yetkazildi/xato" + nisbiy vaqt). `useKanbanRealtime` `sms:status` event'iga reaksiya qiladi → cards va card detail re-fetch. Backend `cards.service.list` `lastSms` qaytaradi.
+- [x] **Operator SMS settings endpoint** `GET /sms/settings` — provider + allowFreeText + supportsTemplateSync. Operator rolli ham ko'ra oladi (RBAC).
+
+### Verifikatsiya
+- `pnpm build` — 5 paket xatosiz.
+- `pnpm test` — backend **99/99** (95 + 4 yangi SMS test: free-text bloklash, template send, Eskiz parsing 2 shape, sync idempotency).
+- `pnpm lint` — 0 xato.
+- pm2 reload `acoustic-backend`.
+- commit `feat(sms): eskiz template sync and template-based sending` + push.
 
 ## Bug fixes (2026-06-02)
 - [x] **Kanban yangi ustun qo'shish**: `usePipelineAdmin.ts` createStage/updateStage/updatePipeline body'dan path param'lar (`pipelineId`/`stageId`/`id`) destructure orqali ajratiladi. Backend `ValidationPipe({ forbidNonWhitelisted: true })` endi 400 qaytarmaydi. Real HTTP test (`apps/backend/test/pipelines-http.spec.ts`, supertest + JwtAuthGuard override + Cls middleware) regression guard qo'shildi — yangi 4 ta test 201/400/200/200 ni tasdiqlaydi.

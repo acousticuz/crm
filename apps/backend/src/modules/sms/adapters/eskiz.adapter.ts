@@ -1,6 +1,11 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { SmsStatus } from "@acoustic-crm/shared";
-import type { SmsAdapter, SmsSendInput, SmsSendResult } from "./sms-adapter";
+import type {
+  ProviderTemplate,
+  SmsAdapter,
+  SmsSendInput,
+  SmsSendResult,
+} from "./sms-adapter";
 
 interface EskizConfig {
   baseUrl?: string;
@@ -125,4 +130,64 @@ export class EskizSmsAdapter implements SmsAdapter {
     this.cachedTokens.set(key, token);
     return token;
   }
+
+  /**
+   * Pull the tenant's approved templates from Eskiz. Eskiz rejects free-text
+   * messages, so the CRM needs to mirror this list to offer operators only
+   * sendable options. The response payload varies slightly between Eskiz
+   * versions ("text" vs "message" vs "original_text"); we accept the common
+   * variants defensively.
+   */
+  async fetchTemplates(cfg: Record<string, unknown>): Promise<ProviderTemplate[]> {
+    const config = cfg as EskizConfig;
+    const baseUrl = (
+      config.baseUrl ?? process.env.ESKIZ_BASE_URL ?? "https://notify.eskiz.uz/api"
+    ).replace(/\/$/, "");
+    const token = await this.ensureToken(baseUrl, config, false);
+    const doFetch = (t: string) =>
+      fetch(`${baseUrl}/user/templates`, {
+        headers: { Authorization: `Bearer ${t}` },
+      });
+    let res = await doFetch(token);
+    if (res.status === 401 && config.email && config.password) {
+      const fresh = await this.ensureToken(baseUrl, config, true);
+      res = await doFetch(fresh);
+    }
+    if (!res.ok) throw new Error(`Eskiz templates HTTP ${res.status}`);
+    const json = (await res.json().catch(() => ({}))) as {
+      data?: unknown;
+      result?: unknown;
+    };
+    const list = pickList(json);
+    return list.map(parseTemplate).filter((t): t is ProviderTemplate => t !== null);
+  }
+}
+
+// --- Response normalization helpers ---------------------------------------
+// Eskiz returns templates either at `data` (array) or `data.result` (newer
+// pagination shape). Tolerate both so a future API tweak doesn't break sync.
+function pickList(json: { data?: unknown; result?: unknown }): Array<Record<string, unknown>> {
+  if (Array.isArray(json.data)) return json.data as Array<Record<string, unknown>>;
+  if (Array.isArray(json.result)) return json.result as Array<Record<string, unknown>>;
+  if (
+    typeof json.data === "object" &&
+    json.data !== null &&
+    Array.isArray((json.data as { result?: unknown }).result)
+  ) {
+    return (json.data as { result: Array<Record<string, unknown>> }).result;
+  }
+  return [];
+}
+
+function parseTemplate(raw: Record<string, unknown>): ProviderTemplate | null {
+  const id = raw.id ?? raw.template_id;
+  if (id == null) return null;
+  const body =
+    (typeof raw.template === "string" && raw.template) ||
+    (typeof raw.original_text === "string" && raw.original_text) ||
+    (typeof raw.text === "string" && raw.text) ||
+    (typeof raw.message === "string" && raw.message);
+  if (!body) return null;
+  const status = typeof raw.status === "string" ? raw.status : null;
+  return { externalId: String(id), body, status };
 }

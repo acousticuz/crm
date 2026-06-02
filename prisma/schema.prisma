@@ -484,18 +484,26 @@ model QAScore {
 // ====================== SmsTemplate ======================
 
 model SmsTemplate {
-  id        String    @id @default(cuid())
-  tenantId  String
-  name      String
-  body      String
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
+  id               String    @id @default(cuid())
+  tenantId         String
+  name             String
+  body             String
+  // Provider-synced fields. When a template originates from Eskiz/Play, we
+  // record the provider id + status so sync can upsert idempotently and the
+  // UI can show whether the template is still approved (status="service") or
+  // rejected/moderation.
+  externalProvider String?
+  externalId       String?
+  externalStatus   String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
 
   tenant Tenant   @relation(fields: [tenantId], references: [id])
   logs   SmsLog[]
 
   @@unique([tenantId, name])
+  @@unique([tenantId, externalProvider, externalId])
   @@index([tenantId])
   @@map("sms_templates")
 }

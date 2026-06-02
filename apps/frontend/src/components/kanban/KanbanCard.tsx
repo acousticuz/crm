@@ -1,7 +1,7 @@
 import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { format } from "date-fns";
-import { Phone, PhoneMissed, User } from "lucide-react";
+import { format, formatDistanceToNowStrict } from "date-fns";
+import { MessageSquare, Phone, PhoneMissed, User } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { CardListItem } from "@/lib/types";
@@ -67,6 +67,28 @@ export function KanbanCard({ card, onOpen }: Props): JSX.Element {
         <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
           <Phone className="h-3 w-3" />
           <span>{phone}</span>
+        </div>
+      )}
+      {card.lastSms && (
+        <div
+          className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground"
+          title={`SMS ${card.lastSms.status} · ${new Date(
+            card.lastSms.sentAt ?? card.lastSms.createdAt,
+          ).toLocaleString("uz-UZ")}`}
+        >
+          <MessageSquare className="h-3 w-3" />
+          <span>
+            SMS {card.lastSms.status === "DELIVERED"
+              ? "yetkazildi"
+              : card.lastSms.status === "FAILED"
+                ? "xato"
+                : "yuborildi"}
+            {" · "}
+            {formatDistanceToNowStrict(
+              new Date(card.lastSms.sentAt ?? card.lastSms.createdAt),
+              { addSuffix: true },
+            )}
+          </span>
         </div>
       )}
       {card.cardTags.length > 0 && (

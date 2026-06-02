@@ -56,6 +56,14 @@ export interface CardListItem {
   createdAt: string;
   cardTags: Array<{ cardId: string; tagId: string; tag: Tag }>;
   hasMissedCall?: boolean;
+  // Most recent SmsLog summary so the column card can show "SMS yuborildi" badge
+  // without a per-row fetch. Updated live via the sms:status socket event.
+  lastSms?: {
+    id: string;
+    status: string;
+    createdAt: string;
+    sentAt: string | null;
+  } | null;
 }
 
 export interface CardDetail extends CardListItem {

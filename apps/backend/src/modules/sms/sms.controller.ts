@@ -28,6 +28,15 @@ import {
 export class SmsController {
   constructor(private readonly sms: SmsService) {}
 
+  // ===== Tenant SMS settings (operators need provider + free-text flag) =====
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.TENANT_ADMIN, UserRole.SUPERVISOR, UserRole.OPERATOR, UserRole.ANALYST)
+  @Get("settings")
+  smsSettings() {
+    return this.sms.getOperatorSmsSettings();
+  }
+
   // ===== Templates =====
 
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -70,6 +79,17 @@ export class SmsController {
   @Audit({ action: "sms.send.manual", entityType: "SmsLog", entityIdPath: "result.id" })
   send(@Body() dto: SendSmsDto) {
     return this.sms.sendManual(dto);
+  }
+
+  // ===== Provider template sync =====
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.TENANT_ADMIN)
+  @Post("templates/sync")
+  @HttpCode(HttpStatus.OK)
+  @Audit({ action: "sms.template.sync", entityType: "SmsTemplate" })
+  syncTemplates() {
+    return this.sms.syncTemplatesFromProvider();
   }
 
   // ===== Listing =====

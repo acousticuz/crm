@@ -141,14 +141,23 @@ export class CardsService {
             take: 5,
             select: { id: true, status: true, direction: true, startedAt: true },
           },
+          // Most-recent SMS so the Kanban card can show "SMS yuborildi" badge
+          // with timestamp + status. Single-row select keeps the payload small.
+          smsLogs: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: { id: true, status: true, createdAt: true, sentAt: true },
+          },
         },
       }),
       this.prisma.t.card.count({ where }),
     ]);
-    // Derive a hasMissedCall flag for the UI badge.
+    // Derive UI flags. lastSms condenses the take:1 list so the frontend
+    // doesn't have to peek into smsLogs[0].
     const items = rows.map((card) => ({
       ...card,
       hasMissedCall: card.calls.some((c) => c.status === "MISSED"),
+      lastSms: card.smsLogs[0] ?? null,
     }));
     return { items, total, page, pageSize };
   }

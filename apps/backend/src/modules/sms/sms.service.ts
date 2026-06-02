@@ -1,9 +1,11 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   HttpException,
   HttpStatus,
   Injectable,
+  Logger,
   NotFoundException,
   OnModuleInit,
   UnauthorizedException,
@@ -64,6 +66,8 @@ function mapSmsConfigToAdapter(
 
 @Injectable()
 export class SmsService implements OnModuleInit {
+  private readonly logger = new Logger(SmsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly cls: ClsService,
@@ -163,6 +167,98 @@ export class SmsService implements OnModuleInit {
     return { id };
   }
 
+  // ===== Operator-facing settings =====
+
+  /**
+   * Tiny summary the SMS form needs to decide between template-only and free
+   * text. Exposes only the public flags — credentials stay server-side.
+   */
+  async getOperatorSmsSettings(): Promise<{
+    provider: string | null;
+    allowFreeText: boolean;
+    supportsTemplateSync: boolean;
+  }> {
+    const tenantId = this.currentTenantId();
+    const { provider, config } = await this.resolveSmsConfig(tenantId);
+    return {
+      provider: provider ?? null,
+      allowFreeText: config.allowFreeText === true || config.allowFreeText === "true",
+      // Eskiz is currently the only adapter that implements fetchTemplates.
+      supportsTemplateSync: provider ? !!this.adapters.pick(provider).fetchTemplates : false,
+    };
+  }
+
+  // ===== Template sync from provider =====
+
+  /**
+   * Pull the tenant's pre-approved templates from the SMS provider (Eskiz
+   * only, for now — Play Mobile does not expose this) and upsert them locally.
+   * Used by the Settings "Sync templates" button. Idempotent: re-running
+   * refreshes bodies/statuses without creating duplicates.
+   */
+  async syncTemplatesFromProvider(): Promise<{
+    provider: string | null;
+    fetched: number;
+    upserted: number;
+    skipped: number;
+  }> {
+    const tenantId = this.currentTenantId();
+    const { provider, config } = await this.resolveSmsConfig(tenantId);
+    if (!provider) throw new BadRequestException("SMS integratsiyasida provayder tanlanmagan");
+    const adapter = this.adapters.pick(provider);
+    if (!adapter.fetchTemplates) {
+      throw new BadRequestException(
+        `Provayder "${provider}" template ro'yxatini olishni qo'llamaydi`,
+      );
+    }
+    const fetched = await adapter.fetchTemplates(config);
+    let upserted = 0;
+    let skipped = 0;
+    for (const t of fetched) {
+      if (!t.body || !t.externalId) {
+        skipped++;
+        continue;
+      }
+      // Auto-name keeps templates discoverable in dropdowns while avoiding
+      // the (tenantId, name) unique collision when two templates share the
+      // same body prefix.
+      const preview = t.body.slice(0, 40).replace(/\s+/g, " ").trim();
+      const name = `${preview} [${adapter.name} #${t.externalId}]`;
+      try {
+        await this.prisma.smsTemplate.upsert({
+          where: {
+            tenantId_externalProvider_externalId: {
+              tenantId,
+              externalProvider: adapter.name,
+              externalId: t.externalId,
+            },
+          },
+          create: {
+            tenantId,
+            name,
+            body: t.body,
+            externalProvider: adapter.name,
+            externalId: t.externalId,
+            externalStatus: t.status ?? null,
+          },
+          update: {
+            body: t.body,
+            externalStatus: t.status ?? null,
+            // Reset soft-delete in case the operator removed-then-restored.
+            deletedAt: null,
+          },
+        });
+        upserted++;
+      } catch (err) {
+        this.logger.warn(
+          `Failed to upsert template ${t.externalId}: ${(err as Error).message}`,
+        );
+        skipped++;
+      }
+    }
+    return { provider, fetched: fetched.length, upserted, skipped };
+  }
+
   // ===== Manual + trigger send =====
 
   async sendManual(dto: SendSmsDto) {
@@ -176,6 +272,17 @@ export class SmsService implements OnModuleInit {
       body = interpolate(template.body, vars);
       templateId = template.id;
     } else if (dto.text) {
+      // Eskiz rejects messages whose text doesn't match an approved template
+      // — let tenants opt in to free text only if they understand they'll
+      // also need a provider that allows it (or a single approved template
+      // they're paraphrasing). Default is template-only.
+      const { config: smsCfg } = await this.resolveSmsConfig(tenantId);
+      const allow = smsCfg.allowFreeText === true || smsCfg.allowFreeText === "true";
+      if (!allow) {
+        throw new ForbiddenException(
+          "Erkin matn o'chirilgan (Eskiz faqat tasdiqlangan template'larga ruxsat beradi). Settings → SMS'da 'Erkin matn' ni yoqing yoki template tanlang.",
+        );
+      }
       body = interpolate(dto.text, vars);
     } else {
       throw new BadRequestException("Either templateId or text is required");

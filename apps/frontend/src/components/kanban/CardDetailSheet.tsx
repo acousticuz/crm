@@ -21,6 +21,7 @@ import {
   useDetachTag,
   useScorecard,
   useSendSms,
+  useSmsSettings,
   useSmsTemplates,
   useTags,
   useUsers,
@@ -39,6 +40,7 @@ export function CardDetailSheet({ cardId, onClose }: Props): JSX.Element {
   const { data: tags = [] } = useTags();
   const { data: users = [] } = useUsers();
   const { data: smsTemplates = [] } = useSmsTemplates();
+  const { data: smsSettings } = useSmsSettings();
   const attachTag = useAttachTag();
   const detachTag = useDetachTag();
   const createNote = useCreateNote();
@@ -136,28 +138,62 @@ export function CardDetailSheet({ cardId, onClose }: Props): JSX.Element {
                 <div className="space-y-2 rounded border bg-muted/30 p-2">
                   <div className="text-xs text-muted-foreground">
                     Qabul qiluvchi: <strong>{card.contact.phones[0] ?? "—"}</strong>
+                    {smsSettings?.provider && (
+                      <span className="ml-2">
+                        · Provayder: <strong>{smsSettings.provider}</strong>
+                      </span>
+                    )}
                   </div>
-                  <select
-                    className="h-9 w-full rounded-md border bg-background px-2 text-sm"
-                    value={smsTemplateId}
-                    onChange={(e) => {
-                      setSmsTemplateId(e.target.value);
-                      const t = smsTemplates.find((s) => s.id === e.target.value);
-                      if (t) setSmsText(t.body);
-                    }}
-                  >
-                    <option value="">Shablonsiz (erkin matn)</option>
-                    {smsTemplates.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
-                      </option>
-                    ))}
-                  </select>
-                  <Textarea
-                    placeholder="SMS matni (Salom {ism}, ... shaklida o'zgaruvchilar)"
-                    value={smsText}
-                    onChange={(e) => setSmsText(e.target.value)}
-                  />
+                  {/* Eskiz rejects free-text bodies — when the tenant hasn't
+                      explicitly enabled allowFreeText, force template choice. */}
+                  {smsTemplates.length === 0 ? (
+                    <div className="rounded bg-amber-100 px-2 py-1 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                      Hech qanday template yo'q. Settings → SMS xizmati'da "Template'larni
+                      sync qilish" tugmasini bosing yoki qo'lda template yarating.
+                    </div>
+                  ) : (
+                    <select
+                      className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+                      value={smsTemplateId}
+                      onChange={(e) => {
+                        setSmsTemplateId(e.target.value);
+                        const t = smsTemplates.find((s) => s.id === e.target.value);
+                        if (t) setSmsText(t.body);
+                      }}
+                    >
+                      <option value="">Template tanlang…</option>
+                      {smsTemplates.map((t) => {
+                        const notApproved =
+                          !!t.externalProvider && t.externalStatus && t.externalStatus !== "service";
+                        return (
+                          <option key={t.id} value={t.id} disabled={!!notApproved}>
+                            {t.name}
+                            {notApproved ? ` (${t.externalStatus} — yuborib bo'lmaydi)` : ""}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  )}
+                  {smsTemplateId && (
+                    <div className="rounded border bg-background p-2 text-xs">
+                      <div className="mb-1 text-muted-foreground">Yuboriladigan matn:</div>
+                      <div className="whitespace-pre-wrap">
+                        {fillVariables(smsText, {
+                          ism: card.contact.fullName,
+                          sana: new Date().toLocaleDateString("uz-UZ"),
+                          summa: card.budget ?? "",
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  {smsSettings?.allowFreeText && (
+                    <Textarea
+                      placeholder="Erkin matn (faqat provayder ruxsat bersa) — Eskiz odatda tasdiqlangan template'lar talab qiladi"
+                      value={smsTemplateId ? "" : smsText}
+                      disabled={!!smsTemplateId}
+                      onChange={(e) => setSmsText(e.target.value)}
+                    />
+                  )}
                   {smsError && (
                     <div className="rounded bg-destructive/10 px-2 py-1 text-xs text-destructive">
                       {smsError}
@@ -166,7 +202,10 @@ export function CardDetailSheet({ cardId, onClose }: Props): JSX.Element {
                   <div className="flex gap-2">
                     <Button
                       size="sm"
-                      disabled={!smsText && !smsTemplateId}
+                      disabled={
+                        sendSms.isPending ||
+                        (!smsTemplateId && !(smsSettings?.allowFreeText && smsText))
+                      }
                       onClick={async () => {
                         setSmsError(null);
                         try {
@@ -179,6 +218,7 @@ export function CardDetailSheet({ cardId, onClose }: Props): JSX.Element {
                             variables: {
                               ism: card.contact.fullName,
                               sana: new Date().toLocaleDateString("uz-UZ"),
+                              summa: card.budget ?? "",
                             },
                           });
                           setSmsOpen(false);
@@ -192,7 +232,7 @@ export function CardDetailSheet({ cardId, onClose }: Props): JSX.Element {
                         }
                       }}
                     >
-                      Yuborish
+                      {sendSms.isPending ? "Yuborilmoqda..." : "Yuborish"}
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => setSmsOpen(false)}>
                       Bekor
@@ -371,6 +411,16 @@ interface CallRowProps {
     startedAt: string;
     duration: number;
   };
+}
+
+// Mirrors backend src/modules/sms/template.ts so the preview the operator
+// sees matches what gets sent. Empty values stay as the raw placeholder so
+// nothing silently disappears.
+function fillVariables(text: string, vars: Record<string, string | number | null>): string {
+  return text.replace(/\{(\w+)\}/g, (m, key: string) => {
+    const v = vars[key];
+    return v === null || v === undefined || v === "" ? m : String(v);
+  });
 }
 
 function CallRow({ call }: CallRowProps): JSX.Element {

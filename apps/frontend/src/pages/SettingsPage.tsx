@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { CheckCircle2, Plug, XCircle, AlertTriangle, Loader2 } from "lucide-react";
+import { CheckCircle2, Plug, XCircle, AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +16,7 @@ import {
   type Integration,
   type IntegrationType,
 } from "@/hooks/useIntegrations";
+import { useSyncSmsTemplates } from "@/hooks/useKanban";
 
 // Field definitions per integration type — secret flag drives password input
 // + "leave blank to keep" hint.
@@ -45,6 +46,14 @@ const FIELDS: Record<IntegrationType, { provider?: string[]; fields: FieldDef[] 
       { key: "password", label: "Parol", secret: true },
       { key: "apiKey", label: "API kalit (ixtiyoriy)", secret: true },
       { key: "sender", label: "Yuboruvchi nomi (sender)", placeholder: "Acoustic" },
+      {
+        key: "allowFreeText",
+        // Eskiz rejects arbitrary text — leave OFF so operators only send
+        // approved templates (the safe default). Turn ON only when the
+        // tenant knows their provider permits free text.
+        label: "Erkin matn yuborishga ruxsat (Eskiz uchun tavsiya etilmaydi)",
+        type: "checkbox",
+      },
     ],
   },
   TELEGRAM: {
@@ -169,17 +178,23 @@ function IntegrationCard({ integration }: { integration: Integration }) {
   const save = useSaveIntegration();
   const test = useTestIntegration();
   const disconnect = useDisconnectIntegration();
+  const syncSmsTemplates = useSyncSmsTemplates();
   const [open, setOpen] = useState(false);
 
   const initial = useMemo(() => {
-    const v: Record<string, string> = {};
+    const v: Record<string, string | boolean> = {};
     for (const f of def.fields) {
-      v[f.key] = (integration.config?.[f.key] as string | undefined) ?? "";
+      const raw = integration.config?.[f.key];
+      if (f.type === "checkbox") {
+        v[f.key] = raw === true || raw === "true";
+      } else {
+        v[f.key] = typeof raw === "string" ? raw : "";
+      }
     }
     return v;
   }, [def.fields, integration.config]);
 
-  const [form, setForm] = useState<Record<string, string>>(initial);
+  const [form, setForm] = useState<Record<string, string | boolean>>(initial);
   const [provider, setProvider] = useState<string>(
     integration.provider ?? def.provider?.[0] ?? "",
   );
@@ -188,11 +203,16 @@ function IntegrationCard({ integration }: { integration: Integration }) {
   async function onSave() {
     setMsg(null);
     // Send only changed/filled fields. Masked secrets (•) are sent as-is so
-    // the backend knows to keep the existing value.
+    // the backend knows to keep the existing value. Booleans go through as-is
+    // so allowFreeText=false isn't dropped.
     const config: Record<string, unknown> = {};
     for (const f of def.fields) {
       const val = form[f.key];
-      if (val !== undefined && val !== "") config[f.key] = val;
+      if (f.type === "checkbox") {
+        config[f.key] = val === true;
+      } else if (typeof val === "string" && val !== "") {
+        config[f.key] = val;
+      }
     }
     try {
       await save.mutateAsync({ type: integration.type, provider: provider || undefined, config });
@@ -211,6 +231,22 @@ function IntegrationCard({ integration }: { integration: Integration }) {
       setMsg(extractErr(e));
     }
   }
+
+  async function onSyncTemplates() {
+    setMsg(null);
+    try {
+      const r = await syncSmsTemplates.mutateAsync();
+      setMsg(
+        `Template'lar sinxronizatsiyalandi: ${r.upserted} ta yangilandi, ${r.skipped} ta o'tkazib yuborildi (${r.fetched} olindi)`,
+      );
+    } catch (e) {
+      setMsg(extractErr(e));
+    }
+  }
+
+  // Eskiz exposes user/templates; Play Mobile does not. Limit the button to
+  // SMS+eskiz so it doesn't appear where it can't work.
+  const showSync = integration.type === "SMS" && (provider === "eskiz" || integration.provider === "eskiz");
 
   return (
     <div className="rounded-lg border bg-card p-4">
@@ -249,25 +285,45 @@ function IntegrationCard({ integration }: { integration: Integration }) {
               </select>
             </div>
           )}
-          {def.fields.map((f) => (
-            <div key={f.key} className="space-y-1">
-              <Label htmlFor={`${integration.type}-${f.key}`} className="text-xs">
-                {f.label}
-                {f.secret && <span className="ml-1 text-muted-foreground">(sir)</span>}
-              </Label>
-              <Input
-                id={`${integration.type}-${f.key}`}
-                type={f.secret ? "text" : f.type ?? "text"}
-                placeholder={
-                  f.secret && (integration.config?.[f.key] as string)?.startsWith?.("•")
-                    ? "(o'zgartirmaslik uchun bo'sh qoldiring)"
-                    : f.placeholder
-                }
-                value={form[f.key] ?? ""}
-                onChange={(e) => setForm((s) => ({ ...s, [f.key]: e.target.value }))}
-              />
-            </div>
-          ))}
+          {def.fields.map((f) => {
+            if (f.type === "checkbox") {
+              return (
+                <label
+                  key={f.key}
+                  htmlFor={`${integration.type}-${f.key}`}
+                  className="flex items-center gap-2 text-xs"
+                >
+                  <input
+                    id={`${integration.type}-${f.key}`}
+                    type="checkbox"
+                    className="h-4 w-4"
+                    checked={form[f.key] === true}
+                    onChange={(e) => setForm((s) => ({ ...s, [f.key]: e.target.checked }))}
+                  />
+                  <span>{f.label}</span>
+                </label>
+              );
+            }
+            return (
+              <div key={f.key} className="space-y-1">
+                <Label htmlFor={`${integration.type}-${f.key}`} className="text-xs">
+                  {f.label}
+                  {f.secret && <span className="ml-1 text-muted-foreground">(sir)</span>}
+                </Label>
+                <Input
+                  id={`${integration.type}-${f.key}`}
+                  type={f.secret ? "text" : f.type ?? "text"}
+                  placeholder={
+                    f.secret && (integration.config?.[f.key] as string)?.startsWith?.("•")
+                      ? "(o'zgartirmaslik uchun bo'sh qoldiring)"
+                      : f.placeholder
+                  }
+                  value={typeof form[f.key] === "string" ? (form[f.key] as string) : ""}
+                  onChange={(e) => setForm((s) => ({ ...s, [f.key]: e.target.value }))}
+                />
+              </div>
+            );
+          })}
           {msg && <p className="text-xs">{msg}</p>}
           <div className="flex flex-wrap gap-2 pt-1">
             <Button size="sm" onClick={onSave} disabled={save.isPending}>
@@ -278,6 +334,26 @@ function IntegrationCard({ integration }: { integration: Integration }) {
               {test.isPending && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
               Tekshirish
             </Button>
+            {showSync && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onSyncTemplates}
+                disabled={syncSmsTemplates.isPending || !integration.configured}
+                title={
+                  integration.configured
+                    ? "Eskiz'dan tasdiqlangan template'larni yuklab olish"
+                    : "Avval saqlang"
+                }
+              >
+                {syncSmsTemplates.isPending ? (
+                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-1 h-3 w-3" />
+                )}
+                Template'larni sync qilish
+              </Button>
+            )}
             {integration.configured && (
               <Button
                 size="sm"

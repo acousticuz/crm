@@ -82,7 +82,9 @@ describe("M5 — SMS adapters, templates, rate limit, trigger action", () => {
       data: {
         name: `${runId}-tenant`,
         status: "ACTIVE",
-        smsConfig: { provider: "mock" },
+        // Existing tests rely on free-text sends; template-only is enforced
+        // separately in the eskiz-specific cases.
+        smsConfig: { provider: "mock", allowFreeText: true },
       },
     });
     tenantId = t.id;
@@ -266,5 +268,141 @@ describe("M5 — SMS adapters, templates, rate limit, trigger action", () => {
     // Cleanup
     await prisma.smsLog.deleteMany({ where: { cardId: card.id } });
     await prisma.stage.delete({ where: { id: sFrom.id } });
+  });
+
+  // Eskiz only accepts pre-approved templates; arbitrary text → API rejects.
+  // Mirror that with a server-side guard so tenants don't waste a send.
+  it("rejects free-text send when tenant has allowFreeText=false", async () => {
+    // Flip the tenant's flag (test isolation: restore after).
+    await prisma.tenant.update({
+      where: { id: tenantId },
+      data: { smsConfig: { provider: "mock", allowFreeText: false } },
+    });
+    try {
+      await expect(
+        asTenant(() =>
+          sms.sendManual({ phone: "+998901112255", text: "free", contactId }),
+        ),
+      ).rejects.toThrow(/Erkin matn o'chirilgan/);
+    } finally {
+      await prisma.tenant.update({
+        where: { id: tenantId },
+        data: { smsConfig: { provider: "mock", allowFreeText: true } },
+      });
+    }
+  });
+
+  // Template send still works regardless of the free-text flag — the rule
+  // exists to push operators toward approved templates, not to block them.
+  it("template send works even when allowFreeText=false", async () => {
+    await prisma.tenant.update({
+      where: { id: tenantId },
+      data: { smsConfig: { provider: "mock", allowFreeText: false } },
+    });
+    try {
+      const template = await asTenant(() =>
+        sms.createTemplate({
+          name: `approved-${runId}`,
+          body: "Salom {ism}, tasdiqlandi",
+        }),
+      );
+      const log = await asTenant(() =>
+        sms.sendManual({
+          phone: "+998901112266",
+          templateId: template.id,
+          variables: { ism: "Aziz" },
+          contactId,
+        }),
+      );
+      expect(log.status).toBe(SmsStatus.SENT);
+      expect(log.text).toBe("Salom Aziz, tasdiqlandi");
+    } finally {
+      await prisma.tenant.update({
+        where: { id: tenantId },
+        data: { smsConfig: { provider: "mock", allowFreeText: true } },
+      });
+    }
+  });
+
+  // Eskiz returns the template list at data.result on newer accounts and at
+  // data[] on older ones; parser tolerates both and surfaces externalStatus.
+  it("EskizSmsAdapter.fetchTemplates parses both data[] and data.result shapes", async () => {
+    const { EskizSmsAdapter } = await import("../src/modules/sms/adapters/eskiz.adapter");
+    const eskiz = new EskizSmsAdapter();
+
+    const shapes = [
+      {
+        data: [
+          { id: 1, template: "Salom {ism}", status: "service" },
+          { id: 2, original_text: "Boshqa", status: "moderation" },
+        ],
+      },
+      {
+        data: {
+          result: [
+            { id: 30, text: "Salom {ism}, {sana}", status: "service" },
+          ],
+        },
+      },
+    ];
+    for (const shape of shapes) {
+      const fetchSpy = jest
+        .spyOn(global, "fetch")
+        .mockResolvedValue(new Response(JSON.stringify(shape), { status: 200 }));
+      try {
+        const out = await eskiz.fetchTemplates({ token: "fake-token" });
+        expect(out.length).toBeGreaterThan(0);
+        expect(out[0].externalId).toBeTruthy();
+        expect(out[0].body).toBeTruthy();
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    }
+  });
+
+  // syncTemplatesFromProvider stores fetched templates as SmsTemplate rows.
+  // Re-running upserts in place rather than creating duplicates.
+  it("syncTemplatesFromProvider upserts templates idempotently", async () => {
+    // Configure Eskiz integration for this tenant (no need for real creds —
+    // we mock the adapter's HTTP).
+    await prisma.tenant.update({
+      where: { id: tenantId },
+      data: { smsConfig: { provider: "eskiz", allowFreeText: false, token: "fake" } },
+    });
+    const fetched = [
+      { id: 100, template: "Salom {ism}, tasdiqlandi", status: "service" },
+      { id: 101, template: "Mijoz {ism}, javob bering", status: "moderation" },
+    ];
+    // A Response body is a single-use stream — return a fresh Response on
+    // each call so the idempotency assertion (second sync) can still parse it.
+    const fetchSpy = jest
+      .spyOn(global, "fetch")
+      .mockImplementation(
+        async () => new Response(JSON.stringify({ data: fetched }), { status: 200 }),
+      );
+    try {
+      const r1 = await asTenant(() => sms.syncTemplatesFromProvider());
+      expect(r1.fetched).toBe(2);
+      expect(r1.upserted).toBe(2);
+
+      // Run twice; nothing duplicates.
+      const r2 = await asTenant(() => sms.syncTemplatesFromProvider());
+      expect(r2.upserted).toBe(2);
+
+      const rows = await prisma.smsTemplate.findMany({
+        where: { tenantId, externalProvider: "eskiz" },
+      });
+      expect(rows).toHaveLength(2);
+      expect(rows.find((r) => r.externalId === "100")?.externalStatus).toBe("service");
+    } finally {
+      fetchSpy.mockRestore();
+      await prisma.smsTemplate.deleteMany({
+        where: { tenantId, externalProvider: "eskiz" },
+      });
+      await prisma.tenant.update({
+        where: { id: tenantId },
+        data: { smsConfig: { provider: "mock", allowFreeText: true } },
+      });
+    }
   });
 });

@@ -84,7 +84,10 @@ describe("Integrations wired into runtime — saved config drives behavior", () 
         name: `${runId}-tenant`,
         status: "ACTIVE",
         // Legacy fallback used until an SMS Integration is configured.
-        smsConfig: { provider: "mock", login: "legacy-login" },
+        // allowFreeText keeps the runtime fallback test compatible with the
+        // new template-only default — these tests assert credential routing,
+        // not the template rule.
+        smsConfig: { provider: "mock", login: "legacy-login", allowFreeText: true },
       },
     });
     tenantId = t.id;
@@ -141,7 +144,15 @@ describe("Integrations wired into runtime — saved config drives behavior", () 
     await asTenant(() =>
       integrations.upsert(IntegrationType.SMS, {
         provider: "mock",
-        config: { provider: "mock", login: "u1", password: "p1", apiKey: "k1", sender: "S1" },
+        config: {
+          provider: "mock",
+          login: "u1",
+          password: "p1",
+          apiKey: "k1",
+          sender: "S1",
+          // Routing test — allow free text so we can exercise the simple path.
+          allowFreeText: true,
+        },
       }),
     );
     const log = await asTenant(() => sms.sendManual({ phone: "+998901110002", text: "hi" }));
@@ -155,7 +166,14 @@ describe("Integrations wired into runtime — saved config drives behavior", () 
     await asTenant(() =>
       integrations.upsert(IntegrationType.SMS, {
         provider: "mock",
-        config: { provider: "mock", login: "u2", password: "p2", apiKey: "k2", sender: "S2" },
+        config: {
+          provider: "mock",
+          login: "u2",
+          password: "p2",
+          apiKey: "k2",
+          sender: "S2",
+          allowFreeText: true,
+        },
       }),
     );
     const log = await asTenant(() => sms.sendManual({ phone: "+998901110003", text: "hi" }));

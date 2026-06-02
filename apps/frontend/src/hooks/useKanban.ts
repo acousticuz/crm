@@ -172,12 +172,42 @@ interface SmsTemplate {
   id: string;
   name: string;
   body: string;
+  externalProvider?: string | null;
+  externalId?: string | null;
+  // Eskiz template lifecycle ("service" = approved). Templates with any other
+  // status are still listed but flagged so operators don't try sending
+  // unapproved bodies that Eskiz will reject.
+  externalStatus?: string | null;
 }
 
 export function useSmsTemplates() {
   return useQuery<SmsTemplate[]>({
     queryKey: ["sms-templates"],
     queryFn: async () => (await api.get<SmsTemplate[]>("/sms/templates")).data,
+  });
+}
+
+export interface SmsSettings {
+  provider: string | null;
+  allowFreeText: boolean;
+  supportsTemplateSync: boolean;
+}
+
+export function useSmsSettings() {
+  return useQuery<SmsSettings>({
+    queryKey: ["sms-settings"],
+    queryFn: async () => (await api.get<SmsSettings>("/sms/settings")).data,
+  });
+}
+
+export function useSyncSmsTemplates() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () =>
+      (await api.post<{ provider: string; fetched: number; upserted: number; skipped: number }>(
+        "/sms/templates/sync",
+      )).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["sms-templates"] }),
   });
 }
 
@@ -248,16 +278,25 @@ export function useKanbanRealtime(): void {
       qc.invalidateQueries({ queryKey: ["pipelines"] });
       qc.invalidateQueries({ queryKey: ["cards"] });
     };
+    // SmsService emits "sms:status" on QUEUED→SENT→DELIVERED transitions and
+    // on send failures. Invalidate both the board (for the lastSms badge) and
+    // any open card detail (for the SMS history list).
+    const refetchSms = () => {
+      qc.invalidateQueries({ queryKey: ["cards"] });
+      qc.invalidateQueries({ queryKey: ["card"] });
+    };
     socket.on("card:moved", refetch);
     socket.on("card:created", refetch);
     socket.on("card:updated", refetch);
     socket.on("call:ended", refetch);
+    socket.on("sms:status", refetchSms);
     socket.on("pipeline:updated", refetchPipelines);
     return () => {
       socket.off("card:moved", refetch);
       socket.off("card:created", refetch);
       socket.off("card:updated", refetch);
       socket.off("call:ended", refetch);
+      socket.off("sms:status", refetchSms);
       socket.off("pipeline:updated", refetchPipelines);
     };
   }, [qc]);

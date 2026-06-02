@@ -20,7 +20,7 @@ export const PUBLIC_FIELDS: Record<IntegrationType, string[]> = {
     "cdrMode",
     "recordingsSource",
   ],
-  [IntegrationType.SMS]: ["provider", "login", "sender"],
+  [IntegrationType.SMS]: ["provider", "login", "sender", "allowFreeText"],
   [IntegrationType.TELEGRAM]: ["webhookUrl", "purpose", "chatId"],
   [IntegrationType.INBOX]: ["provider", "pageId", "pageName"],
 };
