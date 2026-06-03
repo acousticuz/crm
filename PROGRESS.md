@@ -2,9 +2,21 @@
 
 ## Holat
 - **Asosiy 11 milestone + Settings + Call-fixes + Integration-runtime + Operator-extension tugatildi** 🎉
-- Joriy ish: **Kanban board redesign — kartalar, ustunlar, filtrlar**
+- Joriy ish: **Card detail / Calls / Scorecard redesign**
 - Status: **done**
 - Repo: https://github.com/acousticuz/crm
+
+## Card panel + Calls + Scorecard redesign (2026-06-03)
+- [x] **`CallsPage`**: page heading + count, list ichki `card-surface` (border + shadow-xs); har qator `hover:bg-surface/60`, semantic-tinted direction icon (success/info/destructive), `StatusPill` (Javobsiz/Band/Xato), kontakt warning rangi (Noma'lum), inline rename inset-surface, action cluster (Kontakt, Qo'ng'iroq sip:, Karta link, "Tahlil" primary chip with Sparkles ikona).
+- [x] **`ScorecardPage`**: header'da direction icon (success/info/destructive tone), **`ScoreTile`** SVG ring komponentini chizadi (pct ko'k>= 70 success / 40–69 warning / <40 destructive); AI tahlili `card-surface` (Sentiment / Mavzu / Skript / Keyingi qadam KV grid + summary inset-surface); **Xatoliklar** destructive-tinted section, har item severity chip + dalil iqtibos border-l-2; QA bo'limlari `card-surface` + criterion list with passed/failed check icons; transcript `<details>` collapsed by default.
+- [x] **`CardDetailSheet`**: header'da Noma'lum warning rang + warning-tinted rename panel; **`SectionHeading`** komponenti (icon + uppercase tracking-wider + count chip) hamma sectionlarga (Aloqa/Teglar/Vazifalar/Izohlar/Qo'ng'iroqlar/SMS); tasks/notes/sms list itemlari card-surface + shadow-xs, empty-state border-dashed; SMS history'da **`SmsStatusPill`** (Yetkazildi/Yuborildi/Xato/Navbatda); CallRow'da semantic-tinted direction icon, "Tahlilda" pillda animatsion pulse dot, "Tahlil tayyor" success chip, "Tahlil qil" tugma Sparkles ikona bilan.
+- [x] **Mantiqqa tegilmadi**: useScorecard, useCardDetail, useAnalyzeCall, useSendSms, useAttachTag, useCreateTag, useCreateTask, useCreateNote, useSetCallBranch, audio fetch, sip:link — hammasi bir xil.
+
+### Verifikatsiya
+- `pnpm build` — 5 paket xatosiz (CSS 36.2 → 37.1 KB).
+- `pnpm test` — backend **117/117**.
+- `pnpm lint` — 0 xato.
+- commit `feat(design): card panel, calls, qa scorecard redesign` + push.
 
 ## Kanban board redesign (2026-06-03)
 - [x] **`KanbanCard`** (vizual): card-surface bilan rounded-md border + shadow-xs; hover'da `-translate-y-px` + shadow-md (yumshoq lift); drag paytida ring-primary/40 + shadow-overlay; title 2-line clamp, kontakt+telefon kompakt klaster (Phone iconly muted); meta row (oxirgi SMS + due date) 2xs zinc tonida; tag badge'lar, tagsiz bo'lsa render bo'lmaydi; footer'da deterministik palitra'dan keladigan `Avatar` initials chip + mas'ul ismi. Drag/keyboard/click — barchasi avvalgidek.

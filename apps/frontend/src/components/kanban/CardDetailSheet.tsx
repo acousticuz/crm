@@ -1,6 +1,18 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { Phone, MessageSquare, Plus, Pencil } from "lucide-react";
+import {
+  CheckCircle2,
+  ListChecks,
+  MessageSquare,
+  Pencil,
+  Phone,
+  PhoneIncoming,
+  PhoneOutgoing,
+  Plus,
+  Sparkles,
+  StickyNote,
+  Tag as TagIcon,
+} from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -74,15 +86,17 @@ export function CardDetailSheet({ cardId, onClose }: Props): JSX.Element {
             <SheetHeader>
               <SheetTitle>{card.title}</SheetTitle>
               <SheetDescription>
-                <span className={contactIsPlaceholder ? "text-amber-600 font-medium" : undefined}>
+                <span className={contactIsPlaceholder ? "font-medium text-warning" : undefined}>
                   {card.contact.fullName}
                 </span>
-                {card.contact.phones[0] && ` · ${card.contact.phones[0]}`}
+                {card.contact.phones[0] && (
+                  <span className="tabular-nums"> · {card.contact.phones[0]}</span>
+                )}
                 {contactIsPlaceholder && !renameOpen && (
                   <button
                     type="button"
                     onClick={() => setRenameOpen(true)}
-                    className="ml-2 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                    className="ml-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
                   >
                     <Pencil className="h-3 w-3" />
                     Ismni kiriting
@@ -90,8 +104,8 @@ export function CardDetailSheet({ cardId, onClose }: Props): JSX.Element {
                 )}
               </SheetDescription>
               {contactIsPlaceholder && renameOpen && card.contact.phones[0] && (
-                <div className="mt-2 rounded border bg-amber-50 p-2 dark:bg-amber-950/30">
-                  <p className="mb-1.5 text-xs text-muted-foreground">
+                <div className="mt-2 rounded-md border border-warning/40 bg-warning/[0.08] p-3">
+                  <p className="mb-2 text-xs text-warning">
                     Bu kontakt avtomatik yaratilgan. Mijoz ismini kiriting:
                   </p>
                   <SaveUnknownContactForm
@@ -106,7 +120,7 @@ export function CardDetailSheet({ cardId, onClose }: Props): JSX.Element {
             </SheetHeader>
 
             <section className="space-y-2">
-              <h3 className="text-sm font-semibold">Aloqa</h3>
+              <SectionHeading icon={<Phone className="h-3.5 w-3.5" />} title="Aloqa" />
               <div className="flex flex-wrap gap-2">
                 {/* sip:NUMBER URI — OS opens the registered SIP handler (MicroSIP on
                     operator desktops). FreePBX AMI events still log the OUTBOUND
@@ -247,7 +261,9 @@ export function CardDetailSheet({ cardId, onClose }: Props): JSX.Element {
             </section>
 
             <section className="space-y-2">
-              <h3 className="text-sm font-semibold">Teglar</h3>
+              <SectionHeading icon={<TagIcon className="h-3.5 w-3.5" />} title="Teglar" />
+              {/* (h3 above stays out of the markup — SectionHeading is the
+                  canonical heading for every panel section.) */}
               <div className="flex flex-wrap gap-1">
                 {tags.length === 0 && (
                   <span className="text-xs text-muted-foreground">Tenant'da teg yaratilmagan</span>
@@ -281,23 +297,47 @@ export function CardDetailSheet({ cardId, onClose }: Props): JSX.Element {
             </section>
 
             <section className="space-y-2">
-              <h3 className="text-sm font-semibold">Vazifalar ({card.tasks.length})</h3>
-              <ul className="space-y-1 text-sm">
+              <SectionHeading
+                icon={<ListChecks className="h-3.5 w-3.5" />}
+                title="Vazifalar"
+                count={card.tasks.length}
+              />
+              <ul className="space-y-1.5 text-sm">
                 {card.tasks.map((t) => (
-                  <li key={t.id} className="flex items-center justify-between rounded border bg-card px-2 py-1">
-                    <div>
-                      <p className={t.completedAt ? "line-through text-muted-foreground" : ""}>{t.text}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {format(new Date(t.dueAt), "dd MMM HH:mm")} · {t.assignee?.fullName ?? "—"}
+                  <li
+                    key={t.id}
+                    className="flex items-center justify-between gap-2 rounded-md border bg-card px-3 py-2 shadow-xs"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className={
+                          t.completedAt
+                            ? "truncate text-sm text-muted-foreground line-through"
+                            : "truncate text-sm text-foreground"
+                        }
+                      >
+                        {t.text}
+                      </p>
+                      <p className="mt-0.5 text-2xs text-muted-foreground">
+                        {format(new Date(t.dueAt), "dd MMM HH:mm")}
+                        {t.assignee?.fullName && (
+                          <>
+                            <span className="mx-1 text-muted-foreground/40">·</span>
+                            {t.assignee.fullName}
+                          </>
+                        )}
                       </p>
                     </div>
+                    {t.completedAt && <CheckCircle2 className="h-4 w-4 text-success" />}
                   </li>
                 ))}
                 {card.tasks.length === 0 && (
-                  <li className="text-xs text-muted-foreground">Vazifa yo'q</li>
+                  <li className="rounded-md border border-dashed py-3 text-center text-2xs text-muted-foreground">
+                    Vazifa yo'q
+                  </li>
                 )}
               </ul>
-              <div className="space-y-1 rounded border bg-muted/30 p-2">
+              <div className="space-y-2 inset-surface p-3">
                 <Input
                   placeholder="Yangi vazifa matni"
                   value={taskText}
@@ -342,21 +382,31 @@ export function CardDetailSheet({ cardId, onClose }: Props): JSX.Element {
             </section>
 
             <section className="space-y-2">
-              <h3 className="text-sm font-semibold">Izohlar ({card.notes.length})</h3>
-              <ul className="space-y-1 text-sm">
+              <SectionHeading
+                icon={<StickyNote className="h-3.5 w-3.5" />}
+                title="Izohlar"
+                count={card.notes.length}
+              />
+              <ul className="space-y-1.5 text-sm">
                 {card.notes.map((n) => (
-                  <li key={n.id} className="rounded border bg-card px-2 py-1">
-                    <p>{n.text}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {n.author?.fullName ?? "—"} · {format(new Date(n.createdAt), "dd MMM HH:mm")}
+                  <li
+                    key={n.id}
+                    className="rounded-md border bg-card px-3 py-2 shadow-xs"
+                  >
+                    <p className="text-sm text-foreground/90">{n.text}</p>
+                    <p className="mt-1 text-2xs text-muted-foreground">
+                      {n.author?.fullName ?? "—"} ·{" "}
+                      {format(new Date(n.createdAt), "dd MMM HH:mm")}
                     </p>
                   </li>
                 ))}
                 {card.notes.length === 0 && (
-                  <li className="text-xs text-muted-foreground">Izoh yo'q</li>
+                  <li className="rounded-md border border-dashed py-3 text-center text-2xs text-muted-foreground">
+                    Izoh yo'q
+                  </li>
                 )}
               </ul>
-              <div className="space-y-1 rounded border bg-muted/30 p-2">
+              <div className="space-y-2 inset-surface p-3">
                 <Textarea
                   placeholder="Yangi izoh..."
                   value={noteText}
@@ -376,13 +426,17 @@ export function CardDetailSheet({ cardId, onClose }: Props): JSX.Element {
             </section>
 
             <section className="space-y-2">
-              <h3 className="text-sm font-semibold">Qo'ng'iroqlar tarixi (oxirgi 5)</h3>
+              <SectionHeading
+                icon={<PhoneIncoming className="h-3.5 w-3.5" />}
+                title="Qo'ng'iroqlar tarixi"
+                sub="oxirgi 5"
+              />
               {card.calls.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
+                <p className="rounded-md border border-dashed py-3 text-center text-2xs text-muted-foreground">
                   Hozircha qo'ng'iroqlar yo'q. Yuqoridagi "Qo'ng'iroq qilish" tugmasini bosing.
                 </p>
               ) : (
-                <ul className="space-y-1 text-sm">
+                <ul className="space-y-1.5 text-sm">
                   {card.calls.map((c) => (
                     <CallRow key={c.id} call={c} />
                   ))}
@@ -391,17 +445,25 @@ export function CardDetailSheet({ cardId, onClose }: Props): JSX.Element {
             </section>
 
             <section className="space-y-2">
-              <h3 className="text-sm font-semibold">SMS tarixi (oxirgi 5)</h3>
+              <SectionHeading
+                icon={<MessageSquare className="h-3.5 w-3.5" />}
+                title="SMS tarixi"
+                sub="oxirgi 5"
+              />
               {card.smsLogs.length === 0 ? (
-                <p className="text-xs text-muted-foreground">Hech qanday SMS yuborilmagan.</p>
+                <p className="rounded-md border border-dashed py-3 text-center text-2xs text-muted-foreground">
+                  Hech qanday SMS yuborilmagan.
+                </p>
               ) : (
-                <ul className="space-y-1 text-sm">
+                <ul className="space-y-1.5 text-sm">
                   {card.smsLogs.map((s) => (
-                    <li key={s.id} className="rounded border bg-card px-2 py-1">
-                      <div className="text-xs text-muted-foreground">
-                        {s.phone} · {s.status} · {format(new Date(s.createdAt), "dd MMM HH:mm")}
+                    <li key={s.id} className="rounded-md border bg-card px-3 py-2 shadow-xs">
+                      <div className="mb-1 flex flex-wrap items-center gap-x-2 text-2xs text-muted-foreground">
+                        <span className="tabular-nums">{s.phone}</span>
+                        <SmsStatusPill status={s.status} />
+                        <span>{format(new Date(s.createdAt), "dd MMM HH:mm")}</span>
                       </div>
-                      <div className="truncate">{s.text}</div>
+                      <div className="truncate text-sm text-foreground/90">{s.text}</div>
                     </li>
                   ))}
                 </ul>
@@ -424,6 +486,57 @@ interface CallRowProps {
     branch?: { id: string; name: string } | null;
     operator?: { id: string; fullName: string; extension?: string | null } | null;
   };
+}
+
+// Canonical section heading for every panel in the sheet — keeps the visual
+// rhythm consistent so the eye scans the same shape (icon + title +
+// optional count or sub) at every level.
+function SectionHeading({
+  icon,
+  title,
+  sub,
+  count,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  sub?: string;
+  count?: number;
+}): JSX.Element {
+  return (
+    <div className="flex items-baseline gap-2">
+      <span className="self-center text-muted-foreground">{icon}</span>
+      <h3 className="text-2xs font-semibold uppercase tracking-wider text-foreground">
+        {title}
+      </h3>
+      {typeof count === "number" && (
+        <span className="inline-flex h-4 min-w-[18px] items-center justify-center rounded-full bg-surface px-1.5 text-2xs font-medium tabular-nums text-muted-foreground">
+          {count}
+        </span>
+      )}
+      {sub && <span className="text-2xs text-muted-foreground">{sub}</span>}
+    </div>
+  );
+}
+
+// Compact semantic pill for SMS delivery state — used in the SMS history list.
+function SmsStatusPill({ status }: { status: string }): JSX.Element {
+  const meta =
+    status === "DELIVERED"
+      ? { label: "Yetkazildi", cls: "bg-success/15 text-success" }
+      : status === "SENT"
+        ? { label: "Yuborildi", cls: "bg-info/15 text-info" }
+        : status === "FAILED"
+          ? { label: "Xato", cls: "bg-destructive/10 text-destructive" }
+          : status === "QUEUED"
+            ? { label: "Navbatda", cls: "bg-muted text-muted-foreground" }
+            : { label: status, cls: "bg-muted text-muted-foreground" };
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-1.5 py-px text-2xs font-medium ${meta.cls}`}
+    >
+      {meta.label}
+    </span>
+  );
 }
 
 // Inline tag creator — the operator can spin up a new label without leaving
@@ -546,15 +659,36 @@ function CallRow({ call }: CallRowProps): JSX.Element {
     }
   }
 
+  // Direction icon + tone — mirrors CallsPage so the visual language stays
+  // consistent across the two surfaces.
+  const DirectionIcon =
+    call.status === "MISSED"
+      ? PhoneIncoming // missed pill uses different tone, icon stays inbound
+      : call.direction === "INBOUND"
+        ? PhoneIncoming
+        : PhoneOutgoing;
+  const dirTone =
+    call.status === "MISSED"
+      ? "bg-destructive/10 text-destructive"
+      : call.direction === "INBOUND"
+        ? "bg-success/15 text-success"
+        : "bg-info/15 text-info";
   return (
-    <li className="rounded border bg-card px-2 py-1">
+    <li className="rounded-md border bg-card px-3 py-2 shadow-xs">
       <div className="flex items-center justify-between gap-2">
-        <span>
-          {call.direction === "INBOUND" ? "⬇" : "⬆"} {call.status}
+        <span className="flex items-center gap-2 text-xs">
+          <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full ${dirTone}`}>
+            <DirectionIcon className="h-3.5 w-3.5" />
+          </span>
+          <span className="font-medium text-foreground">{call.status}</span>
           {call.operator && (
-            <span className="ml-2 text-xs text-muted-foreground">
+            <span className="text-muted-foreground">
               {call.operator.fullName}
-              {call.operator.extension && ` (${call.operator.extension})`}
+              {call.operator.extension && (
+                <span className="ml-1 rounded bg-surface px-1 py-px text-2xs tabular-nums">
+                  {call.operator.extension}
+                </span>
+              )}
             </span>
           )}
         </span>
@@ -594,7 +728,7 @@ function CallRow({ call }: CallRowProps): JSX.Element {
             <button
               type="button"
               onClick={() => setOpen((v) => !v)}
-              className="text-xs text-primary hover:underline"
+              className="rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-surface hover:text-foreground"
               title="Tahlil panelini ochish/yopish"
             >
               {open ? "Yopish" : "Ochish"}
@@ -605,31 +739,46 @@ function CallRow({ call }: CallRowProps): JSX.Element {
               type="button"
               onClick={() => onAnalyze(false)}
               disabled={analyze.isPending}
-              className="rounded bg-primary px-2 py-0.5 text-xs text-primary-foreground hover:opacity-90 disabled:opacity-50"
+              className="inline-flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground shadow-xs transition-all hover:brightness-110 disabled:opacity-50"
               title="STT + LLM + QA ishga tushadi (pulli)"
             >
+              <Sparkles className="h-3 w-3" />
               {analyze.isPending ? "Boshlanmoqda..." : "Tahlil qil"}
             </button>
           )}
           {answered && open && state === "analyzing" && (
-            <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-              Tahlilda...
+            <span className="inline-flex items-center gap-1 rounded-full bg-warning/20 px-2 py-0.5 text-2xs font-medium text-warning">
+              <span className="relative inline-flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-warning opacity-75" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-warning" />
+              </span>
+              Tahlilda
             </span>
           )}
           {answered && open && state === "analyzed" && (
-            <button
-              type="button"
-              onClick={() => {
-                if (confirm("Bu qo'ng'iroqni qaytadan tahlil qilamizmi? (yangi LLM chaqiruvi — pulli)")) {
-                  onAnalyze(true);
-                }
-              }}
-              disabled={analyze.isPending}
-              className="rounded border px-2 py-0.5 text-xs hover:bg-accent disabled:opacity-50"
-              title="Mavjud tahlilni o'chirib, qaytadan ishga tushiradi"
-            >
-              Qayta tahlil
-            </button>
+            <>
+              <span className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-2xs font-medium text-success">
+                <CheckCircle2 className="h-3 w-3" />
+                Tahlil tayyor
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (
+                    confirm(
+                      "Bu qo'ng'iroqni qaytadan tahlil qilamizmi? (yangi LLM chaqiruvi — pulli)",
+                    )
+                  ) {
+                    onAnalyze(true);
+                  }
+                }}
+                disabled={analyze.isPending}
+                className="rounded-md border px-2 py-1 text-2xs hover:bg-surface disabled:opacity-50"
+                title="Mavjud tahlilni o'chirib, qaytadan ishga tushiradi"
+              >
+                Qayta tahlil
+              </button>
+            </>
           )}
         </div>
       </div>

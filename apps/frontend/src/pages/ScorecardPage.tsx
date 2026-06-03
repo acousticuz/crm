@@ -1,91 +1,159 @@
 import { Link, useParams } from "react-router-dom";
 import { format } from "date-fns";
-import { ArrowLeft, CheckCircle2, XCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  CheckCircle2,
+  PhoneIncoming,
+  PhoneMissed,
+  PhoneOutgoing,
+  Sparkles,
+  XCircle,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { useScorecard } from "@/hooks/useAnalytics";
 
+/**
+ * Single-call scorecard. Visual refresh only — useScorecard fetch + the
+ * supervisor-override path are unchanged.
+ *
+ * Visual hierarchy: header (back link + call meta) → overall score tile →
+ * AI analysis card → mistakes (destructive-tinted) → per-criterion QA list
+ * → transcript collapse. Each section is a card-surface block so the page
+ * reads as a coherent report.
+ */
 export function ScorecardPage(): JSX.Element {
   const { callId } = useParams<{ callId: string }>();
   const { data, isLoading, error } = useScorecard(callId ?? null);
 
   if (isLoading) {
-    return <p className="text-sm text-muted-foreground">Yuklanmoqda...</p>;
+    return (
+      <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
+        Yuklanmoqda...
+      </div>
+    );
   }
   if (error || !data) {
     return (
-      <div>
-        <p className="text-sm text-destructive">Scorecard topilmadi.</p>
-        <Button asChild variant="link" className="px-0">
+      <div className="space-y-3">
+        <Button asChild variant="ghost" size="sm" className="-ml-2">
           <Link to="/dashboard">
-            <ArrowLeft className="mr-1 h-4 w-4" />
-            Boshqaruv paneliga qaytish
+            <ArrowLeft className="h-4 w-4" />
+            Boshqaruv paneli
           </Link>
         </Button>
+        <div className="card-surface p-6 text-center text-sm text-muted-foreground">
+          Scorecard topilmadi.
+        </div>
       </div>
     );
   }
 
+  const DirectionIcon =
+    data.status === "MISSED"
+      ? PhoneMissed
+      : data.direction === "INBOUND"
+        ? PhoneIncoming
+        : PhoneOutgoing;
+
   return (
     <div className="space-y-5">
-      <div>
+      <div className="space-y-2">
         <Button asChild variant="ghost" size="sm" className="-ml-2">
           <Link to="/dashboard">
-            <ArrowLeft className="mr-1 h-4 w-4" />
+            <ArrowLeft className="h-4 w-4" />
             Boshqaruv paneli
           </Link>
         </Button>
-        <h1 className="text-2xl font-semibold">Scorecard</h1>
-        <p className="text-sm text-muted-foreground">
-          {data.direction} · {data.status} · {format(new Date(data.startedAt), "dd MMM yyyy HH:mm")} ·{" "}
-          {data.duration}s
-        </p>
+        <div className="flex items-start gap-3">
+          <span
+            className={cn(
+              "mt-1 inline-flex h-10 w-10 items-center justify-center rounded-full",
+              data.status === "MISSED"
+                ? "bg-destructive/10 text-destructive"
+                : data.direction === "INBOUND"
+                  ? "bg-success/15 text-success"
+                  : "bg-info/15 text-info",
+            )}
+          >
+            <DirectionIcon className="h-5 w-5" />
+          </span>
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tightish text-foreground">
+              Scorecard
+            </h1>
+            <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
+              {data.direction} · {data.status} ·{" "}
+              {format(new Date(data.startedAt), "dd MMM yyyy HH:mm")}
+              {data.duration > 0 && ` · ${data.duration}s`}
+            </p>
+          </div>
+        </div>
       </div>
 
-      {/* Analysis */}
+      {/* Overall score — the first thing the supervisor wants to see. Shown
+          as a big stat tile, with one row per script when there are multiple. */}
+      {data.qaScores.length > 0 && (
+        <section className="card-surface p-4">
+          <div className="flex flex-wrap items-center gap-6">
+            {data.qaScores.map((qa) => (
+              <ScoreTile key={qa.id} qa={qa} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* AI analysis — sentiment / topic / nextStep, plus the free-form
+          summary in a quieter inset-surface so it doesn't compete with the
+          structured fields. */}
       {data.analysis && (
-        <section className="rounded-lg border bg-card p-4">
-          <h2 className="text-sm font-semibold">AI tahlili</h2>
-          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        <section className="card-surface p-4">
+          <SectionHeading
+            icon={<Sparkles className="h-4 w-4 text-primary" />}
+            title="AI tahlili"
+            sub={data.analysis.script?.name}
+          />
+          <dl className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <KV label="Sentiment" value={data.analysis.sentiment} />
             <KV label="Mavzu" value={data.analysis.topic} />
-            <KV label="Keyingi qadam" value={data.analysis.nextStep} />
             <KV label="Skript" value={data.analysis.script?.name} />
-          </div>
+            <KV label="Keyingi qadam" value={data.analysis.nextStep} />
+          </dl>
           {data.analysis.summary && (
-            <p className="mt-2 rounded bg-muted/40 p-2 text-sm">{data.analysis.summary}</p>
+            <p className="mt-3 inset-surface p-3 text-sm leading-relaxed text-foreground/90">
+              {data.analysis.summary}
+            </p>
           )}
         </section>
       )}
 
-      {/* Mistakes — operator deviations from the sales script. Separate
-          section so supervisors can scan it without digging through QA
-          criteria one by one. */}
+      {/* Mistakes — destructive-tinted card so the supervisor sees coaching
+          opportunities first. Each item is a hairline-bordered row inside the
+          tinted section to keep the page legible. */}
       {data.analysis?.mistakes && data.analysis.mistakes.length > 0 && (
-        <section className="rounded-lg border border-destructive/40 bg-destructive/5 p-4">
-          <h2 className="text-sm font-semibold text-destructive">
-            Xatoliklar ({data.analysis.mistakes.length})
-          </h2>
-          <ul className="mt-2 space-y-2">
+        <section className="rounded-lg border border-destructive/30 bg-destructive/[0.04] p-4 shadow-xs">
+          <SectionHeading
+            icon={<AlertTriangle className="h-4 w-4 text-destructive" />}
+            title="Xatoliklar"
+            sub={`${data.analysis.mistakes.length} ta operator og'ishi`}
+            destructive
+          />
+          <ul className="mt-3 space-y-2">
             {data.analysis.mistakes.map((m, i) => (
-              <li key={i} className="rounded border bg-background p-2">
+              <li key={i} className="rounded-md border bg-card p-3 shadow-xs">
                 <div className="flex items-center gap-2">
-                  <span
-                    className={
-                      m.severity === "high"
-                        ? "rounded bg-red-200 px-1.5 py-0.5 text-[10px] font-semibold text-red-900 dark:bg-red-950/60 dark:text-red-200"
-                        : m.severity === "medium"
-                          ? "rounded bg-amber-200 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900 dark:bg-amber-950/60 dark:text-amber-200"
-                          : "rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                    }
-                  >
-                    {m.severity}
-                  </span>
-                  <strong className="text-sm">{m.section}</strong>
+                  <SeverityChip severity={m.severity} />
+                  <strong className="text-sm tracking-tightish text-foreground">
+                    {m.section}
+                  </strong>
                 </div>
-                <p className="mt-1 text-sm">{m.message}</p>
+                <p className="mt-1 text-sm text-foreground/90">{m.message}</p>
                 {m.evidence && m.evidence !== "topilmadi" && m.evidence !== "dalil topilmadi" && (
-                  <p className="mt-1 text-xs italic text-muted-foreground">"{m.evidence}"</p>
+                  <p className="mt-1.5 border-l-2 border-destructive/40 pl-2 text-xs italic text-muted-foreground">
+                    "{m.evidence}"
+                  </p>
                 )}
               </li>
             ))}
@@ -93,67 +161,156 @@ export function ScorecardPage(): JSX.Element {
         </section>
       )}
 
-      {/* QA scores */}
-      {data.qaScores.length === 0 && (
-        <p className="text-sm text-muted-foreground">QA baholar hali tayyor emas.</p>
-      )}
-      {data.qaScores.map((qa) => {
-        const pct = qa.maxScore === 0 ? 0 : Math.round((qa.totalScore / qa.maxScore) * 100);
-        const finalScore =
-          (qa.supervisorOverride as { totalScore?: number } | null)?.totalScore ?? qa.totalScore;
-        return (
-          <section key={qa.id} className="rounded-lg border bg-card p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-semibold">{qa.script.name}</h2>
-                <p className="text-xs text-muted-foreground">
-                  {qa.criteriaResults.length} mezon
-                  {qa.reviewer && ` · supervayzer override: ${qa.reviewer.fullName}`}
-                </p>
-              </div>
-              <Badge color={pct >= 70 ? "#22c55e" : pct >= 40 ? "#f59e0b" : "#ef4444"}>
-                {finalScore}/{qa.maxScore} ({pct}%)
-              </Badge>
-            </div>
-            <ul className="space-y-2">
+      {/* Per-criterion QA results. Empty-state copy when no scoring yet. */}
+      {data.qaScores.length === 0 ? (
+        <div className="card-surface p-6 text-center text-sm text-muted-foreground">
+          QA baholar hali tayyor emas. Tahlilni boshlash uchun karta paneldagi
+          "Tahlil qil" tugmasidan foydalaning.
+        </div>
+      ) : (
+        data.qaScores.map((qa) => (
+          <section key={qa.id} className="card-surface p-4">
+            <SectionHeading
+              icon={<CheckCircle2 className="h-4 w-4 text-success" />}
+              title={qa.script.name}
+              sub={`${qa.criteriaResults.length} mezon${
+                qa.reviewer ? ` · supervayzer override: ${qa.reviewer.fullName}` : ""
+              }`}
+            />
+            <ul className="mt-3 space-y-1.5">
               {qa.criteriaResults.map((r) => (
                 <li
                   key={r.criterionId}
-                  className="flex items-start gap-3 rounded border bg-background p-2"
+                  className="flex items-start gap-3 rounded-md border bg-card px-3 py-2.5 shadow-xs"
                 >
-                  <div className="pt-0.5">
+                  <span className="pt-0.5">
                     {r.passed ? (
-                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      <CheckCircle2 className="h-4 w-4 text-success" />
                     ) : (
                       <XCircle className="h-4 w-4 text-destructive" />
                     )}
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">{r.criterionId}</p>
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground">{r.criterionId}</p>
                     <p className="mt-0.5 text-xs italic text-muted-foreground">
                       Dalil: {r.evidence}
                     </p>
                   </div>
-                  <div className="text-right text-sm">{r.score}</div>
+                  <span className="shrink-0 self-center text-sm font-semibold tabular-nums text-foreground">
+                    {r.score}
+                  </span>
                 </li>
               ))}
             </ul>
           </section>
-        );
-      })}
+        ))
+      )}
 
-      {/* Transcript */}
+      {/* Transcript — collapsed by default so the report stays scannable. */}
       {data.transcript && (
-        <section className="rounded-lg border bg-card p-4">
-          <h2 className="text-sm font-semibold">Transkript ({data.transcript.language})</h2>
-          <p className="text-xs text-muted-foreground">
-            Confidence: {(data.transcript.confidence * 100).toFixed(0)}%
-          </p>
-          <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap rounded bg-muted/40 p-2 text-xs">
+        <details className="card-surface p-4">
+          <summary className="cursor-pointer list-none">
+            <SectionHeading
+              icon={<Sparkles className="h-4 w-4 text-muted-foreground" />}
+              title="Transkript"
+              sub={`${data.transcript.language} · confidence ${(data.transcript.confidence * 100).toFixed(0)}%`}
+            />
+          </summary>
+          <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap rounded-md border bg-surface p-3 text-xs leading-relaxed text-foreground/90">
             {data.transcript.text}
           </pre>
-        </section>
+        </details>
       )}
+    </div>
+  );
+}
+
+// --- helpers --------------------------------------------------------------
+
+function ScoreTile({
+  qa,
+}: {
+  qa: {
+    id: string;
+    totalScore: number;
+    maxScore: number;
+    supervisorOverride: Record<string, unknown> | null;
+    script: { id: string; name: string };
+  };
+}): JSX.Element {
+  const pct = qa.maxScore === 0 ? 0 : Math.round((qa.totalScore / qa.maxScore) * 100);
+  const finalScore =
+    (qa.supervisorOverride as { totalScore?: number } | null)?.totalScore ?? qa.totalScore;
+  const tone =
+    pct >= 70
+      ? { ring: "stroke-success", text: "text-success" }
+      : pct >= 40
+        ? { ring: "stroke-warning", text: "text-warning" }
+        : { ring: "stroke-destructive", text: "text-destructive" };
+  return (
+    <div className="flex items-center gap-4">
+      {/* SVG ring — minimalist visualization of % score. Pure presentation. */}
+      <div className="relative inline-flex h-16 w-16 items-center justify-center">
+        <svg viewBox="0 0 36 36" className="h-16 w-16 -rotate-90">
+          <circle
+            cx="18"
+            cy="18"
+            r="15.9155"
+            fill="none"
+            className="stroke-border"
+            strokeWidth="2.5"
+          />
+          <circle
+            cx="18"
+            cy="18"
+            r="15.9155"
+            fill="none"
+            className={tone.ring}
+            strokeWidth="2.5"
+            strokeDasharray={`${pct}, 100`}
+            strokeLinecap="round"
+          />
+        </svg>
+        <span className={cn("absolute text-sm font-semibold tabular-nums", tone.text)}>
+          {pct}%
+        </span>
+      </div>
+      <div className="space-y-0.5">
+        <p className="text-xs uppercase tracking-wider text-muted-foreground">
+          {qa.script.name}
+        </p>
+        <p className="text-lg font-semibold tabular-nums text-foreground">
+          {finalScore}
+          <span className="ml-1 text-sm font-normal text-muted-foreground">/ {qa.maxScore}</span>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function SectionHeading({
+  icon,
+  title,
+  sub,
+  destructive,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  sub?: string;
+  destructive?: boolean;
+}): JSX.Element {
+  return (
+    <div className="flex items-baseline gap-2">
+      <span className="self-center">{icon}</span>
+      <h2
+        className={cn(
+          "text-sm font-semibold tracking-tightish",
+          destructive ? "text-destructive" : "text-foreground",
+        )}
+      >
+        {title}
+      </h2>
+      {sub && <span className="text-xs text-muted-foreground">{sub}</span>}
     </div>
   );
 }
@@ -161,8 +318,22 @@ export function ScorecardPage(): JSX.Element {
 function KV({ label, value }: { label: string; value?: string | null }) {
   return (
     <div>
-      <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="text-sm font-medium">{value ?? "—"}</p>
+      <p className="text-2xs uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className="mt-0.5 text-sm font-medium text-foreground">{value ?? "—"}</p>
     </div>
+  );
+}
+
+function SeverityChip({ severity }: { severity: string }): JSX.Element {
+  const meta =
+    severity === "high"
+      ? { cls: "bg-destructive/15 text-destructive", label: "Yuqori" }
+      : severity === "medium"
+        ? { cls: "bg-warning/20 text-warning", label: "O'rta" }
+        : { cls: "bg-muted text-muted-foreground", label: "Past" };
+  return (
+    <Badge className={cn(meta.cls, "border-transparent uppercase tracking-wider")}>
+      {meta.label}
+    </Badge>
   );
 }
