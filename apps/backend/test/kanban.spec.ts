@@ -296,6 +296,36 @@ describe("M3 — Kanban (pipelines, stages, cards, tags, notes, tasks)", () => {
     expect(StageType.LOST).toBe("LOST");
   });
 
+  // The seed used to ship a fixed sample set of tags (VIP, qiziqish_yuqori,
+  // shikoyat, narx_so'rovi, filial_tashrifi, qaytarish). They were wiped by
+  // migration 20260603130000_eskiz_token_cache_clear_seed_tags and removed
+  // from the seed script. This test guarantees the tag-creation feature
+  // itself stays fully working — tenant admins can rebuild their own
+  // taxonomy from Settings → Teglar without any of the sample names
+  // existing in the database.
+  it("tag creation still works after the seed sample-tags are cleared", async () => {
+    const SAMPLE_TAG_NAMES = [
+      "VIP",
+      "qiziqish_yuqori",
+      "shikoyat",
+      "narx_so'rovi",
+      "filial_tashrifi",
+      "qaytarish",
+    ];
+    // Confirm the wipe took: none of the seed names live for our tenant.
+    const stale = await prisma.tag.count({
+      where: { tenantId, name: { in: SAMPLE_TAG_NAMES } },
+    });
+    expect(stale).toBe(0);
+
+    // And the CRUD path still works — a fresh tag opens a fresh row.
+    const fresh = await asTenant(() =>
+      tags.create({ name: `post-cleanup-${runId}`, color: "#0ea5e9" }),
+    );
+    expect(fresh.id).toBeDefined();
+    expect(fresh.name).toBe(`post-cleanup-${runId}`);
+  });
+
   // Kanban filter bar now supports a multi-select branch filter — the DTO
   // accepts `branchIds[]` and the list query uses `IN (...)`. A card whose
   // branch matches ANY selected branch should be returned; a card outside

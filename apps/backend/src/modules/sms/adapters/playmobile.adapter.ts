@@ -1,6 +1,11 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { SmsStatus } from "@acoustic-crm/shared";
-import type { SmsAdapter, SmsSendInput, SmsSendResult } from "./sms-adapter";
+import type {
+  SmsAdapter,
+  SmsAdapterContext,
+  SmsSendInput,
+  SmsSendResult,
+} from "./sms-adapter";
 
 interface PlayConfig {
   baseUrl?: string;
@@ -20,7 +25,12 @@ export class PlayMobileSmsAdapter implements SmsAdapter {
   readonly name = "playmobile";
   private readonly logger = new Logger(PlayMobileSmsAdapter.name);
 
-  async send(input: SmsSendInput, cfg: Record<string, unknown>): Promise<SmsSendResult> {
+  async send(
+    input: SmsSendInput,
+    cfg: Record<string, unknown>,
+    _ctx: SmsAdapterContext,
+  ): Promise<SmsSendResult> {
+    void _ctx;
     const config = cfg as PlayConfig;
     const baseUrl = (
       config.baseUrl ?? process.env.PLAYMOBILE_BASE_URL ?? "https://send.smsxabar.uz/broker-api"

@@ -2,9 +2,41 @@
 
 ## Holat
 - **Asosiy 11 milestone + Settings + Call-fixes + Integration-runtime + Operator-extension tugatildi** 🎉
-- Joriy ish: **Telegram inbound qabul + reply (omnichannel inbox kengaytmasi)**
+- Joriy ish: **Eskiz token-auth refactor + seed taglarni o'chirish**
 - Status: **done**
 - Repo: https://github.com/acousticuz/crm
+
+## Eskiz token-auth + seed tag cleanup (2026-06-03)
+
+### A — Eskiz JWT auth (token expired xatosi yo'q)
+- [x] **`EskizTokenCache` model + migration** `20260603130000_eskiz_token_cache_clear_seed_tags` — tenantId PK + token + expiresAt + updatedAt. Tenantga FK + cascade. Token tenant-scoped, restartlardan oshib o'tadi, hech qachon log'ga chiqmaydi.
+- [x] **`EskizTokenCacheService`** — `read/write/clear(tenantId)`, Prisma orqali.
+- [x] **`EskizSmsAdapter` to'liq qayta yozildi**:
+  - `ensureToken(tenantId, cfg, forceRefresh)` — cache → agar yangi va valid bo'lsa qaytaradi; aks holda `/auth/login` (email+password), token+expiresAt cache'ga yoziladi. JWT TTL 29 kun (Eskiz 30 kun TTL'dan oldin refresh).
+  - `withAuth(tenantId, cfg, fetcher)` — `ensureToken` orqali Bearer bilan chaqiradi; **401 bo'lsa**: avval `PATCH /auth/refresh` (Bearer eski token) → muvaffaqiyatli bo'lsa yangi tokenni cache'ga yoziladi va so'rovni bir marta qayta urinadi; muvaffaqiyatsiz bo'lsa cache tozalanadi va to'liq qayta login → so'rov bir marta retry.
+  - `send` / `fetchTemplates` `withAuth` ichida ishlaydi.
+  - **Yangi `testConnection(cfg, ctx)`** — POST `/auth/login` + GET `/auth/user` Bearer bilan; muvaffaqiyatli bo'lsa email/name + balans ko'rsatadi. "Token expired" so'zi hech qachon chiqmaydi — adapter token bilan o'zi shug'ullanadi.
+  - `apiKey` field butunlay olib tashlandi (faqat email+password).
+- [x] **`SmsAdapter` interfeysi**: `SmsAdapterContext { tenantId }` qo'shildi; `send` va `fetchTemplates` `ctx` parametrini oladi. Mock va PlayMobile adapterlar moslashtirildi. Yangi optional `testConnection(cfg, ctx)`.
+- [x] **`SmsService.deliver` va `syncTemplatesFromProvider`** ctx { tenantId } uzatadi.
+- [x] **`IntegrationsService.testSms`** soddalashtirildi: faqat email/parol → `/auth/login` → `/auth/user` Bearer; "Ulandi (email, balans: N)" yoki aniq xato; hech qaerda "token" so'zi chiqmaydi.
+- [x] **`integration-fields`**: SMS SECRET_FIELDS dan `apiKey` olib tashlandi (faqat `password`). PUBLIC_FIELDS o'zgarmadi.
+- [x] **Frontend Settings SMS forma**: `apiKey` Input olib tashlandi — admin faqat email+password kiritadi.
+
+### B — Seed taglarni o'chirish
+- [x] **Migration** sample taglarni butunlay o'chiradi: `card_tags` orqali biriktirilganlari avval `DELETE`, keyin `tags` jadvalidan VIP, qiziqish_yuqori, shikoyat, narx_so'rovi, filial_tashrifi, qaytarish. Cards saqlanadi.
+- [x] **`seed-acoustic.js`** TAGS array va `for (const t of TAGS) {...}` loop'i olib tashlandi; `module.exports`'dan ham TAGS chiqarildi. Re-seed sample tag yaratmaydi.
+- [x] **Tag yaratish (CRUD) hali ishlaydi** — `TagsService.create` ga tegilmagan, OPERATOR ham inline yarata oladi. Test bu kontraktni tekshiradi.
+
+### Test (backend 122 → 128, +6 yangi)
+- `eskiz-token.spec`: 5 ta test (cache reuse, 401 → refresh → retry, refresh fail → re-login → retry, testConnection success path, testConnection fail with no token wording).
+- `kanban.spec`: yangi "tag creation still works after seed sample-tags are cleared" — 6 ta nomning hech biri DB'da yo'q va `tags.create(...)` muvaffaqiyatli ishlaydi.
+
+### Verifikatsiya
+- `pnpm build` — 5 paket xatosiz.
+- `pnpm test` — backend **128/128**.
+- `pnpm lint` — 0 xato.
+- commit `fix(sms): eskiz token auth; chore(tags): clear seed tags` + push.
 
 ## Inbox — Telegram inbound + reply (2026-06-03)
 - [x] **Webhook ingest endpoint**: `POST /api/v1/internal/inbox/telegram/:tenantId` — public, `TelegramWebhookGuard` orqali himoyalanadi. Guard `X-Telegram-Bot-Api-Secret-Token` (Telegram tomondan setWebhook'da o'rnatilgan) yoki `X-Webhook-Secret` header'ni tenant.webhookSecret bilan solishtiradi. CLS context'ga TENANT_ADMIN tenantId yoziladi.

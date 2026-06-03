@@ -5,7 +5,10 @@ import { IntegrationType } from "@acoustic-crm/shared";
 // to the frontend as-is. Keep this in sync with the DTOs and the UI forms.
 export const SECRET_FIELDS: Record<IntegrationType, string[]> = {
   [IntegrationType.FREEPBX]: ["amiSecret"],
-  [IntegrationType.SMS]: ["apiKey", "password"],
+  // Eskiz auth: only the email/password — the long-lived JWT is fetched and
+  // cached server-side (EskizTokenCacheService). Play Mobile uses
+  // login/password basic auth. apiKey is no longer accepted.
+  [IntegrationType.SMS]: ["password"],
   [IntegrationType.TELEGRAM]: ["botToken"],
   [IntegrationType.INBOX]: ["pageAccessToken"],
 };

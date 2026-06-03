@@ -402,55 +402,53 @@ export class IntegrationsService {
     const t = setTimeout(() => controller.abort(), 6000);
     try {
       if (provider === "eskiz") {
+        // Eskiz: only email + password are stored. Every "Tekshirish" press
+        // does a real /auth/login → /auth/user health check; the long-lived
+        // JWT is then cached by EskizSmsAdapter on the next actual call.
+        // No "token expired" wording leaks here — the adapter handles tokens
+        // entirely on its own.
         const base = (process.env.ESKIZ_BASE_URL ?? "https://notify.eskiz.uz/api").replace(/\/$/, "");
         const login = String(config.login ?? "").trim();
         const password = String(config.password ?? "");
-        const token = String(config.apiKey ?? "").trim();
-        // Prefer the long-lived token when present: hits /auth/user with the
-        // bearer, which 401s on an invalid/expired token. Otherwise fall back
-        // to email+password login.
-        if (token) {
-          const userRes = await fetch(`${base}/auth/user`, {
-            headers: { Authorization: `Bearer ${token}` },
-            signal: controller.signal,
-          });
-          if (userRes.ok) {
-            const j = (await userRes.json().catch(() => ({}))) as {
-              data?: { email?: string; balance?: number; name?: string };
-            };
-            const who = j.data?.email ?? j.data?.name ?? "ulandi";
-            const bal =
-              typeof j.data?.balance === "number" ? `, balans: ${j.data.balance}` : "";
-            return { ok: true, message: `Eskiz token amalda (${who}${bal})` };
-          }
-          if (userRes.status === 401) {
-            return { ok: false, message: "Eskiz token yaroqsiz yoki muddati o'tgan" };
-          }
-          // Token check returned an unexpected status — fall through to login
-          // if credentials are also present, otherwise surface a clean message.
-          if (!login || !password) {
-            return { ok: false, message: `Eskiz token tekshiruvi: HTTP ${userRes.status}` };
-          }
-        }
         if (!login || !password) {
-          return { ok: false, message: "Email/parol yoki API kalit kiritilmagan" };
+          return { ok: false, message: "Eskiz email va parolni kiriting" };
         }
         const body = new URLSearchParams();
         body.set("email", login);
         body.set("password", password);
-        const res = await fetch(`${base}/auth/login`, {
+        const loginRes = await fetch(`${base}/auth/login`, {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: body.toString(),
           signal: controller.signal,
         });
-        if (res.ok) return { ok: true, message: "Eskiz email/parol auth muvaffaqiyatli" };
-        // Eskiz returns a small JSON like {"message":"Invalid credentials"} —
-        // surface its text so the operator knows what to fix. We strip any
-        // secrets the response can't contain.
-        const j = (await res.json().catch(() => ({}))) as { message?: string };
-        const reason = j.message ? `: ${j.message}` : "";
-        return { ok: false, message: `Eskiz auth xato${reason} (HTTP ${res.status})` };
+        if (!loginRes.ok) {
+          const j = (await loginRes.json().catch(() => ({}))) as { message?: string };
+          const reason = j.message ? `: ${j.message}` : "";
+          return { ok: false, message: `Eskiz autentifikatsiyasi xato${reason}` };
+        }
+        const loginJson = (await loginRes.json().catch(() => ({}))) as {
+          data?: { token?: string };
+        };
+        const token = loginJson.data?.token;
+        if (!token) {
+          return { ok: false, message: "Eskiz: javobda token kelmadi" };
+        }
+        const userRes = await fetch(`${base}/auth/user`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
+        });
+        if (!userRes.ok) {
+          return { ok: false, message: `Eskiz auth/user xato (HTTP ${userRes.status})` };
+        }
+        const userJson = (await userRes.json().catch(() => ({}))) as {
+          data?: { email?: string; name?: string; balance?: number; sms_balance?: number };
+        };
+        const who = userJson.data?.email ?? userJson.data?.name ?? "Eskiz hisob";
+        const balance = userJson.data?.balance ?? userJson.data?.sms_balance;
+        const balanceTxt =
+          typeof balance === "number" && balance > 0 ? `, balans: ${balance}` : "";
+        return { ok: true, message: `Eskiz ulandi (${who}${balanceTxt})` };
       }
       if (provider === "playmobile") {
         const base = (process.env.PLAYMOBILE_BASE_URL ?? "https://send.smsxabar.uz/broker-api").replace(/\/$/, "");

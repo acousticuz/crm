@@ -28,14 +28,36 @@ export interface ProviderTemplate {
 }
 
 /**
+ * Per-call adapter context. tenantId lets adapters look up server-managed
+ * state (e.g. Eskiz's JWT cache) without leaking it through providerConfig.
+ */
+export interface SmsAdapterContext {
+  tenantId: string;
+}
+
+/**
  * Adapter contract every SMS provider implementation satisfies. New providers
  * can be plugged in by creating a class implementing this interface and
  * registering its name with SmsAdapterFactory.
  */
 export interface SmsAdapter {
   readonly name: string;
-  send(input: SmsSendInput, providerConfig: Record<string, unknown>): Promise<SmsSendResult>;
+  send(
+    input: SmsSendInput,
+    providerConfig: Record<string, unknown>,
+    ctx: SmsAdapterContext,
+  ): Promise<SmsSendResult>;
   // Optional: providers that publish the tenant's approved-template list
   // (Eskiz does, Play Mobile does not). Returning an empty array is a no-op.
-  fetchTemplates?(providerConfig: Record<string, unknown>): Promise<ProviderTemplate[]>;
+  fetchTemplates?(
+    providerConfig: Record<string, unknown>,
+    ctx: SmsAdapterContext,
+  ): Promise<ProviderTemplate[]>;
+  // Optional: lightweight authenticated health check for the Settings
+  // "Tekshirish" button. When omitted, integrations.service falls back to the
+  // generic per-provider test.
+  testConnection?(
+    providerConfig: Record<string, unknown>,
+    ctx: SmsAdapterContext,
+  ): Promise<{ ok: boolean; message: string }>;
 }

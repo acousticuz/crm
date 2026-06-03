@@ -14,6 +14,7 @@ import { SmsAdapterFactory } from "../src/modules/sms/sms-adapter.factory";
 import { SmsRateLimiter } from "../src/modules/sms/rate-limiter";
 import { MockSmsAdapter } from "../src/modules/sms/adapters/mock.adapter";
 import { EskizSmsAdapter } from "../src/modules/sms/adapters/eskiz.adapter";
+import { EskizTokenCacheService } from "../src/modules/sms/adapters/eskiz-token-cache.service";
 import { PlayMobileSmsAdapter } from "../src/modules/sms/adapters/playmobile.adapter";
 import { CardsService } from "../src/modules/cards/cards.service";
 import { ContactsService } from "../src/modules/contacts/contacts.service";
@@ -56,6 +57,8 @@ describe("M5 — SMS adapters, templates, rate limit, trigger action", () => {
         SmsRateLimiter,
         MockSmsAdapter,
         EskizSmsAdapter,
+        // The Eskiz adapter now depends on the tenant-scoped JWT cache.
+        EskizTokenCacheService,
         PlayMobileSmsAdapter,
         CardsService,
         ContactsService,
@@ -327,8 +330,10 @@ describe("M5 — SMS adapters, templates, rate limit, trigger action", () => {
   // Eskiz returns the template list at data.result on newer accounts and at
   // data[] on older ones; parser tolerates both and surfaces externalStatus.
   it("EskizSmsAdapter.fetchTemplates parses both data[] and data.result shapes", async () => {
-    const { EskizSmsAdapter } = await import("../src/modules/sms/adapters/eskiz.adapter");
-    const eskiz = new EskizSmsAdapter();
+    const cacheSvc = new EskizTokenCacheService(prisma);
+    // Seed a fresh token so fetchTemplates doesn't try to log in here.
+    await cacheSvc.write(tenantId, "JWT-PARSER", new Date(Date.now() + 60_000));
+    const eskiz = new EskizSmsAdapter(cacheSvc);
 
     const shapes = [
       {
@@ -350,7 +355,7 @@ describe("M5 — SMS adapters, templates, rate limit, trigger action", () => {
         .spyOn(global, "fetch")
         .mockResolvedValue(new Response(JSON.stringify(shape), { status: 200 }));
       try {
-        const out = await eskiz.fetchTemplates({ token: "fake-token" });
+        const out = await eskiz.fetchTemplates({ email: "x", password: "y" }, { tenantId });
         expect(out.length).toBeGreaterThan(0);
         expect(out[0].externalId).toBeTruthy();
         expect(out[0].body).toBeTruthy();
@@ -358,28 +363,41 @@ describe("M5 — SMS adapters, templates, rate limit, trigger action", () => {
         fetchSpy.mockRestore();
       }
     }
+    // Cleanup the seeded JWT row so later tests start clean.
+    await prisma.eskizTokenCache.deleteMany({ where: { tenantId } });
   });
 
   // syncTemplatesFromProvider stores fetched templates as SmsTemplate rows.
   // Re-running upserts in place rather than creating duplicates.
   it("syncTemplatesFromProvider upserts templates idempotently", async () => {
-    // Configure Eskiz integration for this tenant (no need for real creds —
-    // we mock the adapter's HTTP).
+    // Configure Eskiz integration for this tenant. The adapter still needs
+    // email + password to log in for the JWT; we mock the HTTP below.
     await prisma.tenant.update({
       where: { id: tenantId },
-      data: { smsConfig: { provider: "eskiz", allowFreeText: false, token: "fake" } },
+      data: {
+        smsConfig: {
+          provider: "eskiz",
+          allowFreeText: false,
+          email: "test@test.uz",
+          password: "x",
+        },
+      },
     });
     const fetched = [
       { id: 100, template: "Salom {ism}, tasdiqlandi", status: "service" },
       { id: 101, template: "Mijoz {ism}, javob bering", status: "moderation" },
     ];
-    // A Response body is a single-use stream — return a fresh Response on
-    // each call so the idempotency assertion (second sync) can still parse it.
+    // The adapter calls /auth/login first to get a JWT, then /user/templates.
+    // Return the appropriate body for each path so the same mock covers both
+    // the initial login and the subsequent template fetch.
     const fetchSpy = jest
       .spyOn(global, "fetch")
-      .mockImplementation(
-        async () => new Response(JSON.stringify({ data: fetched }), { status: 200 }),
-      );
+      .mockImplementation(async (url: RequestInfo | URL) => {
+        if (String(url).endsWith("/auth/login")) {
+          return new Response(JSON.stringify({ data: { token: "JWT-SYNC" } }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ data: fetched }), { status: 200 });
+      });
     try {
       const r1 = await asTenant(() => sms.syncTemplatesFromProvider());
       expect(r1.fetched).toBe(2);
@@ -399,6 +417,7 @@ describe("M5 — SMS adapters, templates, rate limit, trigger action", () => {
       await prisma.smsTemplate.deleteMany({
         where: { tenantId, externalProvider: "eskiz" },
       });
+      await prisma.eskizTokenCache.deleteMany({ where: { tenantId } });
       await prisma.tenant.update({
         where: { id: tenantId },
         data: { smsConfig: { provider: "mock", allowFreeText: true } },

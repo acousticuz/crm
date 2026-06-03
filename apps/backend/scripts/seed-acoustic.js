@@ -44,14 +44,11 @@ const BRANCHES = [
   "Navoiy filiali",
 ];
 
-const TAGS = [
-  { name: "VIP", color: "#a855f7" },
-  { name: "qiziqish_yuqori", color: "#22c55e" },
-  { name: "shikoyat", color: "#dc2626" },
-  { name: "narx_so'rovi", color: "#0ea5e9" },
-  { name: "filial_tashrifi", color: "#16a34a" },
-  { name: "qaytarish", color: "#f59e0b" },
-];
+// (Seed used to ship a sample set of tags — VIP, qiziqish_yuqori, shikoyat,
+// narx_so'rovi, filial_tashrifi, qaytarish — but it was opinionated noise
+// for most tenants. The seed no longer creates them; tenant admins build
+// their own taxonomy from Settings → Teglar. Existing rows were removed by
+// migration 20260603130000_eskiz_token_cache_clear_seed_tags.)
 
 const PIPELINE = {
   name: "Sotuv",
@@ -278,14 +275,11 @@ async function main() {
       console.log(`Pipeline already exists: ${pipeline.id}`);
     }
 
-    // Tags.
-    for (const t of TAGS) {
-      const existing = await prisma.tag.findFirst({ where: { tenantId: tenant.id, name: t.name } });
-      if (!existing) {
-        await prisma.tag.create({ data: { tenantId: tenant.id, ...t } });
-      }
-    }
-    console.log(`Tags: ${TAGS.length}`);
+    // Tags — intentionally NOT seeded. The previous sample set (VIP,
+    // qiziqish_yuqori, shikoyat, narx_so'rovi, filial_tashrifi, qaytarish)
+    // turned out to be opinionated noise for most tenants. Tenant admins
+    // create their own labels from Settings → Teglar.
+    console.log("Tags: none seeded — tenant admins create their own.");
 
     // QA Scripts — both the original "Acoustic standart" and the new
     // hearing-aid sales script, idempotent on (tenantId, name). Operator
@@ -352,7 +346,7 @@ async function main() {
 module.exports = {
   TENANT_NAME,
   BRANCHES,
-  TAGS,
+  // (TAGS removed — sample tags no longer ship with the seed.)
   PIPELINE,
   QA_SCRIPT,
   SALES_SCRIPT,

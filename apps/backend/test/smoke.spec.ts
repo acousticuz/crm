@@ -18,6 +18,7 @@ import { SmsAdapterFactory } from "../src/modules/sms/sms-adapter.factory";
 import { SmsRateLimiter } from "../src/modules/sms/rate-limiter";
 import { MockSmsAdapter } from "../src/modules/sms/adapters/mock.adapter";
 import { EskizSmsAdapter } from "../src/modules/sms/adapters/eskiz.adapter";
+import { EskizTokenCacheService } from "../src/modules/sms/adapters/eskiz-token-cache.service";
 import { PlayMobileSmsAdapter } from "../src/modules/sms/adapters/playmobile.adapter";
 import { CardsService } from "../src/modules/cards/cards.service";
 import { ContactsService } from "../src/modules/contacts/contacts.service";
@@ -87,6 +88,7 @@ describe("M11 — Full pipeline smoke test", () => {
         SmsRateLimiter,
         MockSmsAdapter,
         EskizSmsAdapter,
+        EskizTokenCacheService,
         PlayMobileSmsAdapter,
         CardsService,
         ContactsService,

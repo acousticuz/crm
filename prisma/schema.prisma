@@ -126,6 +126,7 @@ model Tenant {
   inboxThreads     InboxThread[]
   inboxMessages    InboxMessage[]
   integrations     Integration[]
+  eskizTokenCache  EskizTokenCache?
 
   @@index([status])
   @@map("tenants")
@@ -717,4 +718,22 @@ model Integration {
   @@unique([tenantId, type])
   @@index([tenantId])
   @@map("integrations")
+}
+
+// ====================== EskizTokenCache ======================
+// Server-managed JWT cache for the Eskiz SMS provider. Eskiz issues a
+// ~30-day JWT on login that must be presented as a Bearer token; we cache
+// it per-tenant so the adapter doesn't re-login on every send. Survives
+// process restarts. Token + expiresAt are both written by EskizSmsAdapter;
+// admins never touch this row.
+
+model EskizTokenCache {
+  tenantId  String   @id
+  token     String
+  expiresAt DateTime
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("eskiz_token_cache")
 }

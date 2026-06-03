@@ -15,6 +15,7 @@ import { SmsAdapterFactory } from "../src/modules/sms/sms-adapter.factory";
 import { SmsRateLimiter } from "../src/modules/sms/rate-limiter";
 import { MockSmsAdapter } from "../src/modules/sms/adapters/mock.adapter";
 import { EskizSmsAdapter } from "../src/modules/sms/adapters/eskiz.adapter";
+import { EskizTokenCacheService } from "../src/modules/sms/adapters/eskiz-token-cache.service";
 import { PlayMobileSmsAdapter } from "../src/modules/sms/adapters/playmobile.adapter";
 import { TriggersService } from "../src/modules/triggers/triggers.service";
 import { TriggerEngine } from "../src/modules/triggers/trigger.engine";
@@ -60,6 +61,7 @@ describe("Integrations wired into runtime — saved config drives behavior", () 
         SmsRateLimiter,
         MockSmsAdapter,
         EskizSmsAdapter,
+        EskizTokenCacheService,
         PlayMobileSmsAdapter,
         TriggersService,
         TriggerEngine,
@@ -148,7 +150,6 @@ describe("Integrations wired into runtime — saved config drives behavior", () 
           provider: "mock",
           login: "u1",
           password: "p1",
-          apiKey: "k1",
           sender: "S1",
           // Routing test — allow free text so we can exercise the simple path.
           allowFreeText: true,
@@ -158,7 +159,6 @@ describe("Integrations wired into runtime — saved config drives behavior", () 
     const log = await asTenant(() => sms.sendManual({ phone: "+998901110002", text: "hi" }));
     expect(log.provider).toBe("mock");
     expect(mock.lastConfig?.login).toBe("u1");
-    expect(mock.lastConfig?.apiKey).toBe("k1");
     expect(mock.lastConfig?.sender).toBe("S1");
   });
 
@@ -170,7 +170,6 @@ describe("Integrations wired into runtime — saved config drives behavior", () 
           provider: "mock",
           login: "u2",
           password: "p2",
-          apiKey: "k2",
           sender: "S2",
           allowFreeText: true,
         },
@@ -178,7 +177,7 @@ describe("Integrations wired into runtime — saved config drives behavior", () 
     );
     const log = await asTenant(() => sms.sendManual({ phone: "+998901110003", text: "hi" }));
     expect(mock.lastConfig?.login).toBe("u2");
-    expect(mock.lastConfig?.apiKey).toBe("k2");
+    expect(mock.lastConfig?.login).toBe("u2");
     expect(log.provider).toBe("mock");
   });
 

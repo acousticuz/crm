@@ -43,9 +43,10 @@ const FIELDS: Record<IntegrationType, { provider?: string[]; fields: FieldDef[] 
   SMS: {
     provider: ["eskiz", "playmobile"],
     fields: [
+      // Eskiz: email + password. The 30-day JWT is fetched/refreshed
+      // server-side, so admins never paste a token here.
       { key: "login", label: "Login / email" },
       { key: "password", label: "Parol", secret: true },
-      { key: "apiKey", label: "API kalit (ixtiyoriy)", secret: true },
       { key: "sender", label: "Yuboruvchi nomi (sender)", placeholder: "Acoustic" },
       {
         key: "allowFreeText",

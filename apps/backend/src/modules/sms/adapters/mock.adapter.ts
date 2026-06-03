@@ -1,6 +1,11 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { SmsStatus } from "@acoustic-crm/shared";
-import type { SmsAdapter, SmsSendInput, SmsSendResult } from "./sms-adapter";
+import type {
+  SmsAdapter,
+  SmsAdapterContext,
+  SmsSendInput,
+  SmsSendResult,
+} from "./sms-adapter";
 
 /**
  * In-memory provider used for tests, local development, and tenants without
@@ -17,7 +22,12 @@ export class MockSmsAdapter implements SmsAdapter {
   private readonly logger = new Logger(MockSmsAdapter.name);
   private counter = 0;
 
-  async send(input: SmsSendInput, cfg?: Record<string, unknown>): Promise<SmsSendResult> {
+  async send(
+    input: SmsSendInput,
+    cfg?: Record<string, unknown>,
+    _ctx?: SmsAdapterContext,
+  ): Promise<SmsSendResult> {
+    void _ctx;
     this.counter += 1;
     this.lastConfig = cfg ?? null;
     const id = `mock-${Date.now()}-${this.counter}`;

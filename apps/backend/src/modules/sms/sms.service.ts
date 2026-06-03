@@ -43,9 +43,11 @@ function toShared(s: string): SmsStatus {
 }
 
 /**
- * Integration SMS config uses generic field names (login, password, apiKey,
- * sender). Each provider adapter expects its own names — translate here so the
- * saved credentials reach the right adapter fields.
+ * Integration SMS config uses generic field names (login, password, sender).
+ * Each provider adapter expects its own names — translate here so the saved
+ * credentials reach the right adapter fields. Eskiz no longer accepts an
+ * apiKey — the long-lived JWT is fetched / refreshed automatically by
+ * EskizSmsAdapter.
  */
 function mapSmsConfigToAdapter(
   provider: string,
@@ -53,10 +55,9 @@ function mapSmsConfigToAdapter(
 ): Record<string, unknown> {
   const login = cfg.login != null ? String(cfg.login) : undefined;
   const password = cfg.password != null ? String(cfg.password) : undefined;
-  const apiKey = cfg.apiKey != null ? String(cfg.apiKey) : undefined;
   const sender = cfg.sender != null ? String(cfg.sender) : undefined;
   if (provider === "eskiz") {
-    return { ...cfg, email: login, password, token: apiKey, from: sender };
+    return { ...cfg, email: login, password, from: sender };
   }
   if (provider === "playmobile") {
     return { ...cfg, login, password, originator: sender };
@@ -211,7 +212,7 @@ export class SmsService implements OnModuleInit {
         `Provayder "${provider}" template ro'yxatini olishni qo'llamaydi`,
       );
     }
-    const fetched = await adapter.fetchTemplates(config);
+    const fetched = await adapter.fetchTemplates(config, { tenantId });
     let upserted = 0;
     let skipped = 0;
     for (const t of fetched) {
@@ -387,6 +388,7 @@ export class SmsService implements OnModuleInit {
     const result = await adapter.send(
       { phone: input.phone, text: input.body },
       config as Record<string, unknown>,
+      { tenantId: input.tenantId },
     );
     const updated = await this.prisma.smsLog.update({
       where: { id: log.id },
