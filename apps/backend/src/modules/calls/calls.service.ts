@@ -506,6 +506,41 @@ export class CallsService {
     }
   }
 
+  /**
+   * Branch list for the per-call branch dropdown. Tenant-scoped via `t.`.
+   */
+  listBranches() {
+    return this.prisma.t.branch.findMany({
+      where: { deletedAt: null },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    });
+  }
+
+  /**
+   * Manually attach a branch to a call — the customer-asked-for branch, set
+   * by the operator post-hoc. Feeds the monthly per-branch funnel report.
+   */
+  async setBranch(callId: string, branchId: string | null) {
+    const { tenantId } = this.currentUser();
+    const call = await this.prisma.t.call.findFirst({
+      where: { id: callId, deletedAt: null },
+    });
+    if (!call) throw new NotFoundException("Qo'ng'iroq topilmadi");
+    if (branchId) {
+      const b = await this.prisma.branch.findFirst({
+        where: { id: branchId, tenantId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!b) throw new BadRequestException("Bunday filial topilmadi");
+    }
+    return this.prisma.t.call.update({
+      where: { id: callId },
+      data: { branchId },
+      include: { branch: { select: { id: true, name: true } } },
+    });
+  }
+
   // ===== Listing =====
 
   listByCard(cardId: string) {
@@ -513,7 +548,10 @@ export class CallsService {
       where: { cardId, deletedAt: null },
       orderBy: { startedAt: "desc" },
       take: 50,
-      include: { operator: { select: { id: true, fullName: true } } },
+      include: {
+        operator: { select: { id: true, fullName: true, extension: true } },
+        branch: { select: { id: true, name: true } },
+      },
     });
   }
 
@@ -522,7 +560,10 @@ export class CallsService {
       where: { contactId, deletedAt: null },
       orderBy: { startedAt: "desc" },
       take: 50,
-      include: { operator: { select: { id: true, fullName: true } } },
+      include: {
+        operator: { select: { id: true, fullName: true, extension: true } },
+        branch: { select: { id: true, name: true } },
+      },
     });
   }
 
@@ -542,9 +583,10 @@ export class CallsService {
       orderBy: { startedAt: "desc" },
       take,
       include: {
-        operator: { select: { id: true, fullName: true } },
+        operator: { select: { id: true, fullName: true, extension: true } },
         contact: { select: { id: true, fullName: true, phones: true } },
         card: { select: { id: true, title: true } },
+        branch: { select: { id: true, name: true } },
       },
     });
   }
@@ -553,9 +595,10 @@ export class CallsService {
     const call = await this.prisma.t.call.findFirst({
       where: { id, deletedAt: null },
       include: {
-        operator: { select: { id: true, fullName: true } },
+        operator: { select: { id: true, fullName: true, extension: true } },
         contact: { select: { id: true, fullName: true, phones: true } },
         card: { select: { id: true, title: true } },
+        branch: { select: { id: true, name: true } },
       },
     });
     if (!call) throw new NotFoundException("Call not found");

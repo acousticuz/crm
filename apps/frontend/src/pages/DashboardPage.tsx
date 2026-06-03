@@ -18,8 +18,10 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth";
+import { Link } from "react-router-dom";
 import {
   useBranches,
+  useBranchesMonthly,
   useOperatorKpi,
   useTeam,
   useTrends,
@@ -46,6 +48,7 @@ export function DashboardPage(): JSX.Element {
   const { data: trends } = useTrends({ ...range, groupBy: "day" });
   const { data: team } = useTeam(range);
   const { data: branches } = useBranches(range);
+  const { data: branchesMonthly } = useBranchesMonthly();
   const { data: criteria } = useWeakestCriteria(range);
 
   const sentimentSlices = useMemo(() => {
@@ -151,9 +154,16 @@ export function DashboardPage(): JSX.Element {
         <div className="rounded-lg border bg-card p-4">
           <h2 className="mb-3 text-sm font-semibold">Jamoa taqqoslash</h2>
           <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={team?.items ?? []}>
+            <BarChart
+              data={(team?.items ?? []).map((it) => ({
+                ...it,
+                // Axis labels carry the extension so supervisors can pair a
+                // bar with the voice they recognize ("Aziz (101)").
+                displayName: it.extension ? `${it.fullName} (${it.extension})` : it.fullName,
+              }))}
+            >
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="fullName" interval={0} angle={-20} textAnchor="end" height={70} />
+              <XAxis dataKey="displayName" interval={0} angle={-20} textAnchor="end" height={80} />
               <YAxis />
               <Tooltip />
               <Legend />
@@ -193,6 +203,90 @@ export function DashboardPage(): JSX.Element {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Branch monthly funnel — leads / WON / LOST / conversion per branch
+          for the current month. Built off Call.branchId (operator-tagged) so
+          it shows which branch the customer asked about, not just the
+          operator's home branch. */}
+      {isSupervisor && branchesMonthly && (
+        <div className="rounded-lg border bg-card p-4">
+          <h2 className="mb-3 text-sm font-semibold">
+            Filiallar oylik hisobot ({branchesMonthly.month})
+          </h2>
+          {branchesMonthly.items.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              Hali hech qaysi qo'ng'iroqda filial belgilanmagan. Qo'ng'iroq qatorida "Filial"
+              dropdownidan tanlang.
+            </p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="text-left text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th className="pb-2">Filial</th>
+                  <th>Qo'ng'iroq</th>
+                  <th>Lead (raqamlar)</th>
+                  <th>Kartalar</th>
+                  <th>Yutdi</th>
+                  <th>Yo'qotdi</th>
+                  <th>Ochiq</th>
+                  <th>Konversiya</th>
+                </tr>
+              </thead>
+              <tbody>
+                {branchesMonthly.items.map((b) => (
+                  <tr key={b.branchId} className="border-t">
+                    <td className="py-1.5 font-medium">{b.name}</td>
+                    <td>{b.calls}</td>
+                    <td>{b.uniqueLeads}</td>
+                    <td>{b.cards}</td>
+                    <td className="text-emerald-600">{b.won}</td>
+                    <td className="text-destructive">{b.lost}</td>
+                    <td>{b.open}</td>
+                    <td className="font-semibold">{b.conversionPct}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* Coaching shortcut — per-operator drilldown. Supervisors click into
+          a specific operator's coaching report. */}
+      {isSupervisor && team?.items && team.items.length > 0 && (
+        <div className="rounded-lg border bg-card p-4">
+          <h2 className="mb-3 text-sm font-semibold">Murabbiylik (operator bo'yicha)</h2>
+          <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {team.items.map((it) => (
+              <li
+                key={it.userId ?? Math.random()}
+                className="rounded-md border bg-background p-2"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">
+                    {it.fullName ?? it.userId}
+                    {it.extension && (
+                      <span className="ml-1 text-xs text-muted-foreground">({it.extension})</span>
+                    )}
+                  </span>
+                  {it.userId && (
+                    <Link
+                      to={`/coaching/${it.userId}`}
+                      className="text-xs text-primary hover:underline"
+                    >
+                      Ko'rish →
+                    </Link>
+                  )}
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  QA: <strong>{it.avgQaScore}</strong> · Konversiya:{" "}
+                  <strong>{it.conversionPct}%</strong>
+                </div>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>

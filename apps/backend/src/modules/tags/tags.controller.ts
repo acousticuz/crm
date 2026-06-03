@@ -29,7 +29,9 @@ export class TagsController {
     return this.service.list();
   }
 
-  @Roles(UserRole.TENANT_ADMIN, UserRole.SUPERVISOR)
+  // Operators can create tags inline from the card panel — quicker than
+  // routing every new label through an admin. Recolor/delete still admin-only.
+  @Roles(UserRole.TENANT_ADMIN, UserRole.SUPERVISOR, UserRole.OPERATOR)
   @Post()
   @Audit({ action: "tag.create", entityType: "Tag", entityIdPath: "result.id" })
   create(@Body() dto: CreateTagDto) {

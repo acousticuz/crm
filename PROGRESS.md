@@ -2,9 +2,23 @@
 
 ## Holat
 - **Asosiy 11 milestone + Settings + Call-fixes + Integration-runtime + Operator-extension tugatildi** 🎉
-- Joriy ish: **Tahlil tugmasi — pulli STT/LLM faqat operator bossagina ishlaydi + Xatoliklar (mistakes) ro'yxati**
+- Joriy ish: **Reports — ism+extension, Call.branchId va oylik filial reporti, Murabbiylik aggregatsiyasi, Tag inline yaratish**
 - Status: **done**
 - Repo: https://github.com/acousticuz/crm
+
+## Reports + branch + coaching + tag UX (2026-06-03)
+- [x] **Operator ismi va extension hamma joyda**: `OperatorKpi` ga `extension` qo'shildi. `operatorKpi()` foydalanuvchini select qilganda `fullName + extension` ham qaytaradi. `teamSummary()` har row'da extension. Dashboard Jamoa taqqoslash chartining XAxis'i `"Aziz (101)"` ko'rinishida.
+- [x] **`Call.branchId` per-call tegi** + migration `20260603120000_call_branch_id` (FK Branch). `PATCH /calls/:id/branch` endpoint (OPERATOR/SUPERVISOR/TENANT_ADMIN). `GET /branches` endpoint dropdown uchun. CardDetailSheet CallRow'da har qator yonida "Filial" select — saqlangach realtime cards/scorecard invalidate. `cards.service.findById`, `calls.listByCard/listByContact/listRecent/findById` hammasi branch + operator.extension qaytaradi.
+- [x] **Oylik branch reporti** `GET /analytics/branches/monthly?month=YYYY-MM` — `{branchId, name, calls, uniqueLeads, cards, won, lost, open, conversionPct}`. WON/LOST = qo'lda kartani WON/LOST bosqichga ko'chirgan. Dashboard'da "Filiallar oylik hisobot" jadval.
+- [x] **Murabbiylik (coaching) reporti** `GET /analytics/coaching/:operatorId?from=&to=` — totalCalls, avgQaScore, weakest 3 section (pass-rate), top 5 mistake (Analysis.mistakes'dan freq), haftalik trend (ISO week). Operator faqat o'zini ko'radi (force `userId=user.sub`); supervisor/admin har kim. Yangi `/coaching/:operatorId` sahifa Dashboard'dan link.
+- [x] **Tag inline yaratish**: OPERATOR rol ham `POST /tags` qila oladi (recolor/delete admin-only qoladi). CardDetailSheet Teglar bo'limida "Yangi teg" inline form (input + rang) — yaratilgach avtomatik kartaga biriktiriladi. Yangi hook'lar: `useCreateTag`, `useBranches`, `useSetCallBranch`, `useBranchesMonthly`, `useCoaching`.
+
+### Verifikatsiya
+- `pnpm build` — 5 paket xatosiz.
+- `pnpm test` — backend **117/117** (+3 yangi `branch-coaching-reports.spec`: branch monthly funnel sonlari, coaching avg/weakest/topMistakes/trend, team extension).
+- `pnpm lint` — 0 xato.
+- pm2 reload `acoustic-backend` (migratsiya bilan).
+- commit `feat(reports-branch-kanban): named reports, branch monthly report, coaching, kanban/tags polish` + push.
 
 ## On-demand tahlil + xatoliklar ro'yxati (2026-06-03)
 - [x] **Auto-enqueue olib tashlandi**: `calls.service.completed` ANSWERED qo'ng'iroqlar uchun avtomatik STT enqueue qilmaydi. STT + LLM pulli xizmat — faqat operator/supervisor "Tahlil qil" bossagina ishlaydi.

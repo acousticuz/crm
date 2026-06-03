@@ -4,6 +4,7 @@ import { LoginPage } from "@/pages/LoginPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { KanbanPage } from "@/pages/KanbanPage";
 import { CallsPage } from "@/pages/CallsPage";
+import { CoachingPage } from "@/pages/CoachingPage";
 import { InboxPage } from "@/pages/InboxPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { ScorecardPage } from "@/pages/ScorecardPage";
@@ -37,6 +38,7 @@ export const router = createBrowserRouter([
       { path: "inbox", element: <InboxPage /> },
       { path: "settings", element: <SettingsPage /> },
       { path: "scorecard/:callId", element: <ScorecardPage /> },
+      { path: "coaching/:operatorId", element: <CoachingPage /> },
     ],
   },
   { path: "*", element: <NotFoundPage /> },

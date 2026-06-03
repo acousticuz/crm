@@ -6,6 +6,7 @@ import {
   HttpStatus,
   NotFoundException,
   Param,
+  Patch,
   Post,
   Query,
   Res,
@@ -144,5 +145,29 @@ export class CallsController {
   @Get("calls/:id")
   get(@Param("id") id: string) {
     return this.calls.findById(id);
+  }
+
+  // Manual per-call tagging: the operator marks which BRANCH the customer
+  // asked about. Feeds the monthly per-branch report. Pass branchId=null to
+  // clear.
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.TENANT_ADMIN, UserRole.SUPERVISOR, UserRole.OPERATOR)
+  @Patch("calls/:id/branch")
+  @Audit({ action: "call.branch.tag", entityType: "Call", entityIdPath: "params.id" })
+  setBranch(
+    @Param("id") id: string,
+    @Body() body: { branchId: string | null },
+  ) {
+    return this.calls.setBranch(id, body.branchId ?? null);
+  }
+
+  // Branch list — needed by the per-call branch dropdown. Lives on the calls
+  // controller (rather than its own module) because branches are only ever
+  // read by name from this UI surface today.
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.TENANT_ADMIN, UserRole.SUPERVISOR, UserRole.OPERATOR, UserRole.ANALYST)
+  @Get("branches")
+  branches() {
+    return this.calls.listBranches();
   }
 }

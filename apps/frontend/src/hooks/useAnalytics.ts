@@ -4,6 +4,8 @@ import { api } from "@/lib/api";
 export interface OperatorKpi {
   userId: string | null;
   fullName?: string;
+  // Operator's PJSIP extension surfaced alongside the name everywhere.
+  extension?: string | null;
   callsInbound: number;
   callsOutbound: number;
   callsMissed: number;
@@ -117,6 +119,50 @@ export function useTrends(q: RangeQuery & { metric?: string; groupBy?: "day" | "
   return useQuery<{ groupBy: string; items: TrendPoint[] }>({
     queryKey: ["analytics", "trends", q],
     queryFn: async () => (await api.get("/analytics/trends", { params: q })).data,
+  });
+}
+
+export interface BranchMonthlyRow {
+  branchId: string;
+  name: string;
+  calls: number;
+  uniqueLeads: number;
+  cards: number;
+  won: number;
+  lost: number;
+  open: number;
+  conversionPct: number;
+}
+
+export function useBranchesMonthly(month?: string) {
+  return useQuery<{ month: string; items: BranchMonthlyRow[] }>({
+    queryKey: ["analytics", "branches-monthly", month],
+    queryFn: async () =>
+      (await api.get("/analytics/branches/monthly", { params: month ? { month } : {} })).data,
+  });
+}
+
+export interface CoachingMistake {
+  section: string;
+  message: string;
+  severity: string;
+  count: number;
+}
+export interface CoachingReport {
+  operator: { id: string; fullName: string; extension: string | null };
+  totalCalls: number;
+  avgQaScore: number;
+  weakestSections: Array<{ section: string; passRate: number; samples: number }>;
+  topMistakes: CoachingMistake[];
+  trend: Array<{ week: string; calls: number; avgQaScore: number }>;
+}
+
+export function useCoaching(operatorId: string | null, q: RangeQuery = {}) {
+  return useQuery<CoachingReport>({
+    queryKey: ["analytics", "coaching", operatorId, q],
+    enabled: !!operatorId,
+    queryFn: async () =>
+      (await api.get(`/analytics/coaching/${operatorId}`, { params: q })).data,
   });
 }
 

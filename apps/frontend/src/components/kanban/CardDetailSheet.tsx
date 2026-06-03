@@ -16,12 +16,15 @@ import { api } from "@/lib/api";
 import {
   useAnalyzeCall,
   useAttachTag,
+  useBranches,
   useCardDetail,
   useCreateNote,
+  useCreateTag,
   useCreateTask,
   useDetachTag,
   useScorecard,
   useSendSms,
+  useSetCallBranch,
   useSmsSettings,
   useSmsTemplates,
   useTags,
@@ -268,6 +271,13 @@ export function CardDetailSheet({ cardId, onClose }: Props): JSX.Element {
                   );
                 })}
               </div>
+              <InlineCreateTag
+                onCreated={(tagId) => {
+                  // Auto-attach the freshly created tag — that's why the
+                  // operator created it in the first place.
+                  attachTag.mutate({ cardId: card.id, tagId });
+                }}
+              />
             </section>
 
             <section className="space-y-2">
@@ -411,7 +421,70 @@ interface CallRowProps {
     status: string;
     startedAt: string;
     duration: number;
+    branch?: { id: string; name: string } | null;
+    operator?: { id: string; fullName: string; extension?: string | null } | null;
   };
+}
+
+// Inline tag creator — the operator can spin up a new label without leaving
+// the card. Saves with a sensible default color and auto-attaches it via the
+// onCreated callback.
+function InlineCreateTag({ onCreated }: { onCreated: (tagId: string) => void }): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [color, setColor] = useState("#0ea5e9");
+  const create = useCreateTag();
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mt-1 inline-flex items-center gap-1 rounded border border-dashed px-2 py-0.5 text-xs text-muted-foreground hover:bg-accent"
+      >
+        <Plus className="h-3 w-3" />
+        Yangi teg
+      </button>
+    );
+  }
+  return (
+    <div className="mt-1 flex items-center gap-1">
+      <Input
+        className="h-7 text-xs"
+        placeholder="Teg nomi"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        autoFocus
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            setOpen(false);
+            setName("");
+          }
+        }}
+      />
+      <input
+        type="color"
+        value={color}
+        onChange={(e) => setColor(e.target.value)}
+        className="h-7 w-9 cursor-pointer rounded border"
+        title="Rang"
+      />
+      <Button
+        size="sm"
+        disabled={!name.trim() || create.isPending}
+        onClick={async () => {
+          const t = await create.mutateAsync({ name: name.trim(), color });
+          onCreated(t.id);
+          setOpen(false);
+          setName("");
+        }}
+      >
+        +
+      </Button>
+      <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+        ×
+      </Button>
+    </div>
+  );
 }
 
 // Mirrors backend src/modules/sms/template.ts so the preview the operator
@@ -429,6 +502,8 @@ function CallRow({ call }: CallRowProps): JSX.Element {
   const { data: sc, isLoading } = useScorecard(open ? call.id : null);
   const answered = call.status === "ANSWERED";
   const analyze = useAnalyzeCall();
+  const { data: branches = [] } = useBranches();
+  const setBranch = useSetCallBranch();
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [audioState, setAudioState] = useState<"idle" | "loading" | "none" | "error">("idle");
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
@@ -476,8 +551,32 @@ function CallRow({ call }: CallRowProps): JSX.Element {
       <div className="flex items-center justify-between gap-2">
         <span>
           {call.direction === "INBOUND" ? "⬇" : "⬆"} {call.status}
+          {call.operator && (
+            <span className="ml-2 text-xs text-muted-foreground">
+              {call.operator.fullName}
+              {call.operator.extension && ` (${call.operator.extension})`}
+            </span>
+          )}
         </span>
         <div className="flex items-center gap-2">
+          {/* Per-call branch tagging — operator records which filial the
+              customer asked about. Powers the monthly per-branch report. */}
+          <select
+            className="h-7 rounded border bg-background px-1 text-xs"
+            value={call.branch?.id ?? ""}
+            disabled={setBranch.isPending}
+            onChange={(e) =>
+              setBranch.mutate({ callId: call.id, branchId: e.target.value || null })
+            }
+            title="Mijoz so'ragan filial"
+          >
+            <option value="">Filial yo'q</option>
+            {branches.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
           <span className="text-xs text-muted-foreground">
             {format(new Date(call.startedAt), "dd MMM HH:mm")} · {call.duration}s
           </span>

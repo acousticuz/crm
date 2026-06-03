@@ -46,6 +46,41 @@ export function useTags() {
   });
 }
 
+// Inline tag creation from the card panel — backend allows OPERATOR role
+// (recolor / delete remain admin-only).
+export function useCreateTag() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { name: string; color: string }) =>
+      (await api.post<Tag>("/tags", input)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tags"] }),
+  });
+}
+
+// Branch list for the per-call "Filial" dropdown. Lives on the calls module.
+export interface Branch {
+  id: string;
+  name: string;
+}
+export function useBranches() {
+  return useQuery<Branch[]>({
+    queryKey: ["branches"],
+    queryFn: async () => (await api.get<Branch[]>("/branches")).data,
+  });
+}
+
+export function useSetCallBranch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { callId: string; branchId: string | null }) =>
+      (await api.patch(`/calls/${input.callId}/branch`, { branchId: input.branchId })).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["card"] });
+      qc.invalidateQueries({ queryKey: ["calls"] });
+    },
+  });
+}
+
 export function useUsers() {
   return useQuery<UserSummary[]>({
     queryKey: ["users"],

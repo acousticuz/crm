@@ -181,6 +181,7 @@ model Branch {
   tenant Tenant @relation(fields: [tenantId], references: [id])
   users  User[]
   cards  Card[] @relation("CardBranch")
+  calls  Call[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -372,6 +373,10 @@ model Call {
   contactId     String?
   cardId        String?
   operatorId    String?
+  // Branch the CUSTOMER asked about, set manually per call. Distinct from
+  // operator's home branch (User.branchId) — a customer can call any operator
+  // about any branch. Drives the monthly branch report.
+  branchId      String?
   direction     CallDirection
   fromNumber    String
   toNumber      String
@@ -389,6 +394,7 @@ model Call {
   contact    Contact?    @relation(fields: [contactId], references: [id])
   card       Card?       @relation(fields: [cardId], references: [id])
   operator   User?       @relation("CallOperator", fields: [operatorId], references: [id])
+  branch     Branch?     @relation(fields: [branchId], references: [id])
   transcript Transcript?
   analysis   Analysis?
   qaScores   QAScore[]
@@ -397,6 +403,7 @@ model Call {
   @@index([tenantId, startedAt])
   @@index([tenantId, cardId])
   @@index([tenantId, operatorId])
+  @@index([tenantId, branchId])
   @@map("calls")
 }
 

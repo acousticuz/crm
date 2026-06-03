@@ -185,6 +185,12 @@ export class CardsService {
         calls: {
           orderBy: { startedAt: "desc" },
           take: 5,
+          include: {
+            // Operator extension + branch surface in the call-row UI so the
+            // supervisor sees "Aziz (101) · Chilonzor" without an extra fetch.
+            operator: { select: { id: true, fullName: true, extension: true } },
+            branch: { select: { id: true, name: true } },
+          },
         },
         smsLogs: {
           orderBy: { createdAt: "desc" },

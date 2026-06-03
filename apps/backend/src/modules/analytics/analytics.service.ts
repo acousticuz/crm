@@ -15,6 +15,10 @@ interface CriterionResult {
 export interface OperatorKpi {
   userId: string | null;
   fullName?: string;
+  // PJSIP extension surfaced alongside the name so reports can display
+  // "Aziz (101)" rather than a CUID — supervisors recognize voices by
+  // extension first.
+  extension?: string | null;
   callsInbound: number;
   callsOutbound: number;
   callsMissed: number;
@@ -131,17 +135,20 @@ export class AnalyticsService {
     }
 
     let fullName: string | undefined;
+    let extension: string | null | undefined;
     if (query.userId) {
       const u = await this.prisma.user.findFirst({
         where: { id: query.userId, tenantId, deletedAt: null },
-        select: { fullName: true },
+        select: { fullName: true, extension: true },
       });
       fullName = u?.fullName;
+      extension = u?.extension ?? null;
     }
 
     return {
       userId: query.userId ?? null,
       fullName,
+      extension,
       callsInbound: inbound,
       callsOutbound: outbound,
       callsMissed: missed,
@@ -164,15 +171,247 @@ export class AnalyticsService {
         role: { in: ["OPERATOR", "SUPERVISOR"] },
         ...(query.branchId ? { branchId: query.branchId } : {}),
       },
-      select: { id: true, fullName: true, branchId: true },
+      select: { id: true, fullName: true, extension: true, branchId: true },
     });
     const rows = await Promise.all(
       ops.map(async (op) => {
         const kpi = await this.operatorKpi({ ...query, userId: op.id });
-        return { ...kpi, fullName: op.fullName, branchId: op.branchId };
+        return {
+          ...kpi,
+          fullName: op.fullName,
+          extension: op.extension,
+          branchId: op.branchId,
+        };
       }),
     );
     return { items: rows };
+  }
+
+  // ===== Branch monthly report =====
+
+  /**
+   * Per-branch funnel for one calendar month: how many distinct numbers
+   * (leads) the branch received, how many cards moved to a WON stage, how
+   * many to LOST, and the conversion %. Branch is taken from Call.branchId
+   * (the customer-asked-for branch, set manually per call) — distinct from
+   * the operator's home branch.
+   *
+   * `month` is "YYYY-MM" in the server's local timezone. Defaults to current.
+   */
+  async branchMonthlyReport(input: { month?: string }) {
+    const tenantId = this.currentTenantId();
+    const { start, end, monthKey } = monthRange(input.month);
+
+    const branches = await this.prisma.branch.findMany({
+      where: { tenantId, deletedAt: null },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    });
+
+    const calls = await this.prisma.call.findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+        branchId: { not: null },
+        startedAt: { gte: start, lt: end },
+      },
+      select: {
+        id: true,
+        branchId: true,
+        fromNumber: true,
+        toNumber: true,
+        direction: true,
+        cardId: true,
+        card: { select: { id: true, status: true } },
+      },
+    });
+
+    const rows = branches.map((b) => {
+      const branchCalls = calls.filter((c) => c.branchId === b.id);
+      const uniqueNumbers = new Set(
+        branchCalls.map((c) => (c.direction === "INBOUND" ? c.fromNumber : c.toNumber)),
+      );
+      const cards = new Map<string, "OPEN" | "WON" | "LOST">();
+      for (const c of branchCalls) {
+        if (c.cardId && c.card) cards.set(c.cardId, c.card.status as "OPEN" | "WON" | "LOST");
+      }
+      let won = 0;
+      let lost = 0;
+      let open = 0;
+      for (const status of cards.values()) {
+        if (status === "WON") won += 1;
+        else if (status === "LOST") lost += 1;
+        else open += 1;
+      }
+      const closed = won + lost;
+      return {
+        branchId: b.id,
+        name: b.name,
+        calls: branchCalls.length,
+        uniqueLeads: uniqueNumbers.size,
+        cards: cards.size,
+        won,
+        lost,
+        open,
+        conversionPct: closed === 0 ? 0 : round((won / closed) * 100, 1),
+      };
+    });
+    return { month: monthKey, items: rows };
+  }
+
+  // ===== Operator coaching aggregation =====
+
+  /**
+   * Aggregates a supervisor's coaching view for one operator over a period:
+   * avg QA, weakest 3 script sections, top 5 most-common mistakes from
+   * Analysis.mistakes, and a per-week trend. Designed for a single-operator
+   * drilldown page.
+   */
+  async coachingForOperator(input: {
+    operatorId: string;
+    from?: string;
+    to?: string;
+  }) {
+    const tenantId = this.currentTenantId();
+    const dateWhere: Prisma.DateTimeFilter = {};
+    if (input.from) dateWhere.gte = new Date(input.from);
+    if (input.to) dateWhere.lte = new Date(input.to);
+    const hasDate = Object.keys(dateWhere).length > 0;
+
+    const user = await this.prisma.user.findFirst({
+      where: { id: input.operatorId, tenantId, deletedAt: null },
+      select: { id: true, fullName: true, extension: true, branchId: true },
+    });
+    if (!user) {
+      throw new UnauthorizedException("Operator topilmadi");
+    }
+
+    const calls = await this.prisma.call.findMany({
+      where: {
+        tenantId,
+        deletedAt: null,
+        operatorId: input.operatorId,
+        ...(hasDate ? { startedAt: dateWhere } : {}),
+      },
+      select: {
+        id: true,
+        startedAt: true,
+        analysis: { select: { mistakes: true } },
+        qaScores: { select: { totalScore: true, maxScore: true, criteriaResults: true } },
+      },
+    });
+
+    // Avg QA score.
+    let qaSum = 0;
+    let qaN = 0;
+    for (const c of calls) {
+      for (const q of c.qaScores) {
+        if (q.maxScore > 0) {
+          qaSum += (q.totalScore / q.maxScore) * 100;
+          qaN += 1;
+        }
+      }
+    }
+    const avgQaScore = qaN === 0 ? 0 : round(qaSum / qaN, 1);
+
+    // Weakest sections — aggregate per-criterion pass rate, then group by
+    // section using the tenant's scripts as metadata.
+    const scripts = await this.prisma.script.findMany({
+      where: { tenantId, deletedAt: null },
+      select: { criteria: true },
+    });
+    const sectionOf = new Map<string, string>();
+    const textOf = new Map<string, string>();
+    for (const s of scripts) {
+      const arr =
+        (s.criteria as unknown as Array<{ id: string; section: string; text: string }>) ?? [];
+      for (const c of arr) {
+        sectionOf.set(c.id, c.section);
+        textOf.set(c.id, c.text);
+      }
+    }
+    const sectionStats = new Map<string, { passed: number; total: number }>();
+    for (const c of calls) {
+      for (const q of c.qaScores) {
+        const arr = q.criteriaResults as unknown as CriterionResult[] | null;
+        if (!Array.isArray(arr)) continue;
+        for (const r of arr) {
+          const section = sectionOf.get(r.criterionId) ?? "?";
+          const s = sectionStats.get(section) ?? { passed: 0, total: 0 };
+          s.total += 1;
+          if (r.passed) s.passed += 1;
+          sectionStats.set(section, s);
+        }
+      }
+    }
+    const sections = Array.from(sectionStats.entries()).map(([section, s]) => ({
+      section,
+      passRate: s.total === 0 ? 0 : round((s.passed / s.total) * 100, 1),
+      samples: s.total,
+    }));
+    const weakestSections = [...sections]
+      .filter((s) => s.samples > 0)
+      .sort((a, b) => a.passRate - b.passRate)
+      .slice(0, 3);
+
+    // Top mistakes — count by message+section. Severity carried for sort tiebreak.
+    const mistakeCounts = new Map<
+      string,
+      { section: string; message: string; severity: string; count: number }
+    >();
+    for (const c of calls) {
+      const arr =
+        (c.analysis?.mistakes as unknown as Array<{
+          section: string;
+          message: string;
+          severity: string;
+        }>) ?? [];
+      for (const m of arr) {
+        const key = `${m.section}::${m.message}`;
+        const entry = mistakeCounts.get(key) ?? {
+          section: m.section,
+          message: m.message,
+          severity: m.severity ?? "medium",
+          count: 0,
+        };
+        entry.count += 1;
+        mistakeCounts.set(key, entry);
+      }
+    }
+    const topMistakes = Array.from(mistakeCounts.values())
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    // Weekly QA trend (ISO week-of-year).
+    const weekBuckets = new Map<string, { qaSum: number; qaN: number; calls: number }>();
+    for (const c of calls) {
+      const wk = isoWeekKey(c.startedAt);
+      const b = weekBuckets.get(wk) ?? { qaSum: 0, qaN: 0, calls: 0 };
+      b.calls += 1;
+      for (const q of c.qaScores) {
+        if (q.maxScore > 0) {
+          b.qaSum += (q.totalScore / q.maxScore) * 100;
+          b.qaN += 1;
+        }
+      }
+      weekBuckets.set(wk, b);
+    }
+    const trend = Array.from(weekBuckets.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([week, b]) => ({
+        week,
+        calls: b.calls,
+        avgQaScore: b.qaN === 0 ? 0 : round(b.qaSum / b.qaN, 1),
+      }));
+
+    return {
+      operator: { id: user.id, fullName: user.fullName, extension: user.extension },
+      totalCalls: calls.length,
+      avgQaScore,
+      weakestSections,
+      topMistakes,
+      trend,
+    };
   }
 
   // ===== Branch summary =====
@@ -372,4 +611,37 @@ function bucketKey(date: Date, groupBy: "day" | "week"): string {
   }
   d.setUTCHours(0, 0, 0, 0);
   return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Parse "YYYY-MM" → [start, end) of the month in UTC. Defaults to the
+ * current month so the report endpoint can be hit without a query param.
+ */
+function monthRange(month?: string): { start: Date; end: Date; monthKey: string } {
+  const now = new Date();
+  let y = now.getUTCFullYear();
+  let m = now.getUTCMonth(); // 0-indexed
+  if (month && /^\d{4}-\d{2}$/.test(month)) {
+    const [ys, ms] = month.split("-");
+    y = Number(ys);
+    m = Number(ms) - 1;
+  }
+  const start = new Date(Date.UTC(y, m, 1));
+  const end = new Date(Date.UTC(y, m + 1, 1));
+  const monthKey = `${y}-${String(m + 1).padStart(2, "0")}`;
+  return { start, end, monthKey };
+}
+
+/**
+ * ISO week key like "2026-W23". Stable sort + human-readable for the
+ * coaching report's weekly trend.
+ */
+function isoWeekKey(date: Date): string {
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  // Shift to Thursday of the same ISO week — ISO weeks are defined by it.
+  const day = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil(((d.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
+  return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
 }
