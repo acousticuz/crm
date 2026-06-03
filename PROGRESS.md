@@ -2,9 +2,27 @@
 
 ## Holat
 - **Asosiy 11 milestone + Settings + Call-fixes + Integration-runtime + Operator-extension tugatildi** 🎉
-- Joriy ish: **Kanban drag fix + multi-branch filter**
+- Joriy ish: **Telegram inbound qabul + reply (omnichannel inbox kengaytmasi)**
 - Status: **done**
 - Repo: https://github.com/acousticuz/crm
+
+## Inbox — Telegram inbound + reply (2026-06-03)
+- [x] **Webhook ingest endpoint**: `POST /api/v1/internal/inbox/telegram/:tenantId` — public, `TelegramWebhookGuard` orqali himoyalanadi. Guard `X-Telegram-Bot-Api-Secret-Token` (Telegram tomondan setWebhook'da o'rnatilgan) yoki `X-Webhook-Secret` header'ni tenant.webhookSecret bilan solishtiradi. CLS context'ga TENANT_ADMIN tenantId yoziladi.
+- [x] **Polling fallback**: `InboxService.tickTelegramPolling(tenantId)` — TELEGRAM Integration'dan `botToken` + `inboundOffset` o'qiydi, `getUpdates?offset={n}` chaqiradi, har bir update'ni ingest qiladi, oxirgi `update_id+1` ni `inboundOffset` ga saqlaydi. `tickAllPollingTenants()` har 5 sekundda (env `TELEGRAM_POLL_INTERVAL_MS`) ishlaydigan setInterval orqali ishga tushiriladi. NODE_ENV=test'da poller off (testlar deterministik). `stopPolling()` graceful shutdown uchun.
+- [x] **TELEGRAM Integration field'lar**: `inboundMode` (`off`/`webhook`/`polling`), `inboundWebhookUrl`, `inboundOffset` (server-managed) PUBLIC_FIELDS ga qo'shildi. Hech narsa hardcoded emas — bot token barcha holatlarda tenantning saqlangan TELEGRAM Integration'idan keladi.
+- [x] **Inbound mantiq** (`ingestTelegramUpdate`): contact identifikatsiya — `msg.contact.phone_number` bo'lsa phone match (mavjud contact); aks holda mavjud Telegram thread orqali tikla; aks holda yangi Contact `source="telegram"`, `fullName = from.first_name + last_name || username || "Noma'lum"`. `InboxThread` upsert `(tenantId, "telegram", chatId)`. `InboxMessage` INBOUND, `externalMessageId = message_id`, `sentAt = msg.date * 1000`. Idempotent: dupe `(tenantId, threadId, externalMessageId)` check. Realtime `SOCKET_EVENTS.INBOX_MESSAGE` emit. AuditLog `inbox.telegram.received`.
+- [x] **Reply via bot** (`dispatchToChannel` `thread.channel === "telegram"` shoxchasi): yangi `dispatchTelegram(tenantId, chatId, text)` — TELEGRAM Integration'dan `botToken` oladi va `https://api.telegram.org/bot{token}/sendMessage` (JSON `{chat_id, text}`) chaqiradi. `result.message_id` ni `externalMessageId` sifatida qaytaradi. Mavjud guardrails (`detectSensitiveCategories`, `approveDraft`/`rejectDraft`, `sendManual` human-in-the-loop, RBAC) butunlay saqlangan.
+- [x] **Yangi socket event** `inbox:message` — frontend UI inbox/Kanban panellarini live yangilashi uchun.
+- [x] **Multi-tenant izolyatsiya**: `tickAllPollingTenants` har TELEGRAM Integration'ni alohida o'tadi, har biriga o'z botToken+offset. Guard CLS context tenantId yozadi, downstream Prisma extension shu bilan filter qiladi.
+
+### Test (backend 118 → 122)
+- Inbound update creates Noma'lum contact (source=telegram), thread, message; idempotent re-process; phone match'da mavjud contact'ga ulanadi; operator reply mock'langan fetch orqali `bot{token}/sendMessage`'ga `chat_id` + text yuboradi va InboxMessage `SENT` + `externalMessageId` yoziladi.
+
+### Verifikatsiya
+- `pnpm build` — 5 paket xatosiz.
+- `pnpm test` — backend **122/122**.
+- `pnpm lint` — 0 xato.
+- commit `feat(inbox): receive and reply to telegram messages` + push.
 
 ## Kanban drag fix + multi-branch filter (2026-06-03)
 - [x] **DragOverlay portal**: `KanbanPage` ga `@dnd-kit/core` `DragOverlay` import qilindi; `onDragStart` paytida aktiv karta `activeCard` state'iga yoziladi; `<DragOverlay dropAnimation={null}>` orqali aktiv karta portal sifatida (DOM tree'dan tashqarida) chiqariladi — ustun `overflow-y-auto` chiziqlari bilan kesilmaydi. Visual: rotate-1 + cursor-grabbing + pointer-events-none.

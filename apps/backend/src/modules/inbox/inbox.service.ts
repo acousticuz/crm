@@ -4,15 +4,18 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  OnModuleInit,
   UnauthorizedException,
 } from "@nestjs/common";
 import { ClsService } from "nestjs-cls";
-import { UserRole, IntegrationType } from "@acoustic-crm/shared";
+import { SOCKET_EVENTS, UserRole, IntegrationType } from "@acoustic-crm/shared";
+import type { Prisma } from "@prisma/client";
 import { readContext } from "../../common/tenant-context";
 import { normalizePhone } from "../../common/phone";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { IntegrationsService } from "../integrations/integrations.service";
+import { RealtimeService } from "../realtime/realtime.service";
 import { detectSensitiveCategories } from "./sensitivity";
 import {
   ApproveDraftDto,
@@ -28,6 +31,29 @@ import {
  * (M8) could be plugged in here for richer drafts, but we keep this layer
  * deterministic so safety tests are reliable.
  */
+// Telegram update payload shapes. We accept the Bot API "Update" object and
+// only the fields we actually read — everything else is ignored.
+export interface TelegramUpdate {
+  update_id: number;
+  message?: TelegramMessage;
+}
+export interface TelegramMessage {
+  message_id: number;
+  date: number;
+  text?: string;
+  from?: { id: number; first_name?: string; last_name?: string; username?: string };
+  chat: { id: number; type?: string; title?: string };
+  contact?: { phone_number?: string; first_name?: string; user_id?: number };
+}
+
+function safeNormalize(raw: string): string | null {
+  try {
+    return normalizePhone(raw);
+  } catch {
+    return null;
+  }
+}
+
 function generateDraft(customerText: string, channel: string): string {
   const lowered = customerText.toLowerCase();
   const greeting = "Assalomu alaykum! Murojaatingiz uchun rahmat.";
@@ -45,15 +71,41 @@ function generateDraft(customerText: string, channel: string): string {
 }
 
 @Injectable()
-export class InboxService {
+export class InboxService implements OnModuleInit {
   private readonly logger = new Logger(InboxService.name);
+  // Telegram polling driver. Tenants in inboundMode="polling" are ticked at
+  // this interval; webhook tenants don't generate any work here. Cleared on
+  // module destroy in tests so jest can exit cleanly.
+  private pollTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly cls: ClsService,
     private readonly audit: AuditService,
     private readonly integrations: IntegrationsService,
+    private readonly realtime: RealtimeService,
   ) {}
+
+  onModuleInit(): void {
+    // Skip the background poller during jest so tests stay deterministic
+    // and the worker doesn't leak open handles. Production starts it.
+    if (process.env.NODE_ENV === "test") return;
+    const intervalMs = Number(process.env.TELEGRAM_POLL_INTERVAL_MS ?? 5000);
+    if (intervalMs <= 0) return;
+    this.pollTimer = setInterval(() => {
+      this.tickAllPollingTenants().catch((err) => {
+        this.logger.warn(`Telegram polling tick failed: ${(err as Error).message}`);
+      });
+    }, intervalMs);
+  }
+
+  /** For tests / graceful shutdown — stop the background poller. */
+  stopPolling(): void {
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
+    }
+  }
 
   /** Decrypted page access token from the tenant's saved INBOX Integration. */
   async resolveInboxToken(tenantId: string): Promise<string | null> {
@@ -74,6 +126,12 @@ export class InboxService {
     text: string,
   ): Promise<string | null> {
     if (!thread.externalThreadId) return null;
+    // Telegram replies go through the bot using the TELEGRAM integration's
+    // saved botToken — not the INBOX integration. chat_id is whatever we
+    // stored as externalThreadId at ingestion time.
+    if (thread.channel === "telegram") {
+      return this.dispatchTelegram(tenantId, thread.externalThreadId, text);
+    }
     const token = await this.resolveInboxToken(tenantId);
     if (!token) {
       this.logger.debug?.(`Inbox send skipped — no INBOX integration for tenant ${tenantId}`);
@@ -99,12 +157,274 @@ export class InboxService {
     }
   }
 
+  /**
+   * Send a single message to a Telegram chat via the tenant's bot. Returns
+   * the message_id Telegram assigns (so we can deduplicate / quote later) or
+   * null if the bot token isn't configured.
+   */
+  private async dispatchTelegram(
+    tenantId: string,
+    chatId: string,
+    text: string,
+  ): Promise<string | null> {
+    const cfg = await this.integrations.getDecryptedConfig(tenantId, IntegrationType.TELEGRAM);
+    const token = cfg ? String(cfg.botToken ?? "") : "";
+    if (!token) {
+      this.logger.warn(
+        `Telegram reply skipped — no TELEGRAM integration / bot token for tenant ${tenantId}`,
+      );
+      return null;
+    }
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, text }),
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        result?: { message_id?: number };
+      };
+      const id = json.result?.message_id;
+      return id != null ? String(id) : null;
+    } catch (err) {
+      this.logger.error(`Telegram send failed: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
   private requireUser(): { userId: string; tenantId: string; role: UserRole } {
     const ctx = readContext(this.cls);
     if (!ctx.tenantId || !ctx.userId || !ctx.role) {
       throw new UnauthorizedException("Authentication required");
     }
     return { tenantId: ctx.tenantId, userId: ctx.userId, role: ctx.role };
+  }
+
+  // ===== Telegram inbound (webhook + polling) =====
+
+  /**
+   * Process one Telegram Update payload. Idempotent on (tenantId, channel,
+   * externalMessageId) so retries / duplicate polls don't double-record.
+   *
+   * Returns null if the update has no usable message (e.g. an edited_message
+   * or channel post) so callers can simply skip them.
+   */
+  async ingestTelegramUpdate(
+    tenantId: string,
+    update: TelegramUpdate,
+  ): Promise<{ threadId: string; messageId: string } | null> {
+    const msg = update.message;
+    if (!msg || !msg.chat || msg.text == null) return null;
+    const chatId = String(msg.chat.id);
+    const updateMessageId = String(msg.message_id);
+
+    // Identify or create the customer Contact. Prefer a phone match if the
+    // user shared their number via the contact button; otherwise fall back
+    // to a Noma'lum placeholder tagged with source=telegram so the operator
+    // can rename later.
+    const contact = await this.resolveTelegramContact(tenantId, msg);
+
+    const thread = await this.prisma.inboxThread.upsert({
+      where: {
+        tenantId_channel_externalThreadId: {
+          tenantId,
+          channel: "telegram",
+          externalThreadId: chatId,
+        },
+      },
+      create: {
+        tenantId,
+        channel: "telegram",
+        externalThreadId: chatId,
+        contactId: contact.id,
+        status: "OPEN",
+        lastMessageAt: new Date(),
+      },
+      update: {
+        contactId: contact.id,
+        status: "OPEN",
+        lastMessageAt: new Date(),
+      },
+    });
+
+    // Idempotency: skip if we've already recorded this update_id for this
+    // thread. The unique index on InboxMessage isn't there, but a quick
+    // findFirst keeps polling safe.
+    const dupe = await this.prisma.inboxMessage.findFirst({
+      where: { tenantId, threadId: thread.id, externalMessageId: updateMessageId },
+      select: { id: true },
+    });
+    if (dupe) return { threadId: thread.id, messageId: dupe.id };
+
+    const senderName =
+      msg.from?.first_name ??
+      msg.from?.username ??
+      contact.fullName ??
+      "customer";
+    const inbound = await this.prisma.inboxMessage.create({
+      data: {
+        tenantId,
+        threadId: thread.id,
+        direction: "INBOUND",
+        sender: senderName,
+        text: msg.text,
+        externalMessageId: updateMessageId,
+        sentAt: msg.date ? new Date(msg.date * 1000) : null,
+        status: "RECEIVED",
+      },
+    });
+
+    this.realtime.toTenant(tenantId, SOCKET_EVENTS.INBOX_MESSAGE, {
+      threadId: thread.id,
+      messageId: inbound.id,
+      channel: "telegram",
+      direction: "INBOUND",
+    });
+
+    await this.audit.log({
+      tenantId,
+      action: "inbox.telegram.received",
+      entityType: "InboxMessage",
+      entityId: inbound.id,
+      details: { threadId: thread.id, chatId, fromId: msg.from?.id ?? null },
+    });
+
+    return { threadId: thread.id, messageId: inbound.id };
+  }
+
+  /**
+   * Find or create the contact behind a Telegram message. If the user shared
+   * a contact card (phone_number), prefer a phone match. Otherwise look the
+   * chat up via an existing Telegram thread; if still nothing, create a
+   * Noma'lum placeholder tagged source="telegram" — same convention used by
+   * the inbound-call resolver so operators rename one way.
+   */
+  private async resolveTelegramContact(
+    tenantId: string,
+    msg: TelegramMessage,
+  ): Promise<{ id: string; fullName: string }> {
+    const phone =
+      msg.contact?.phone_number != null ? safeNormalize(msg.contact.phone_number) : null;
+    if (phone) {
+      const byPhone = await this.prisma.contact.findFirst({
+        where: { tenantId, deletedAt: null, phones: { has: phone } },
+      });
+      if (byPhone) return byPhone;
+    }
+    // Try to recover the contact via an existing Telegram thread for this chat.
+    const existingThread = await this.prisma.inboxThread.findFirst({
+      where: {
+        tenantId,
+        channel: "telegram",
+        externalThreadId: String(msg.chat.id),
+        deletedAt: null,
+      },
+      select: { contactId: true },
+    });
+    if (existingThread?.contactId) {
+      const c = await this.prisma.contact.findFirst({
+        where: { id: existingThread.contactId, tenantId, deletedAt: null },
+      });
+      if (c) return c;
+    }
+    const fullName =
+      [msg.from?.first_name, msg.from?.last_name].filter(Boolean).join(" ").trim() ||
+      msg.from?.username ||
+      "Noma'lum";
+    return this.prisma.contact.create({
+      data: {
+        tenantId,
+        fullName,
+        phones: phone ? [phone] : [],
+        source: "telegram",
+      },
+    });
+  }
+
+  /**
+   * Long-polling driver. Calls Telegram getUpdates with the stored offset,
+   * processes each new update, then advances the offset on the Integration
+   * config so the next tick only fetches newer ones.
+   */
+  async tickTelegramPolling(tenantId: string): Promise<{ processed: number }> {
+    const cfg = await this.integrations.getDecryptedConfig(tenantId, IntegrationType.TELEGRAM);
+    if (!cfg) return { processed: 0 };
+    const mode = String(cfg.inboundMode ?? "off");
+    if (mode !== "polling") return { processed: 0 };
+    const token = String(cfg.botToken ?? "");
+    if (!token) return { processed: 0 };
+    const offset = Number(cfg.inboundOffset ?? 0);
+    let processed = 0;
+    let maxUpdateId = offset;
+    try {
+      const url = `https://api.telegram.org/bot${token}/getUpdates?timeout=0${
+        offset ? `&offset=${offset}` : ""
+      }`;
+      const res = await fetch(url);
+      if (!res.ok) return { processed: 0 };
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        result?: TelegramUpdate[];
+      };
+      const updates = json.result ?? [];
+      for (const u of updates) {
+        try {
+          await this.ingestTelegramUpdate(tenantId, u);
+        } catch (err) {
+          this.logger.warn(
+            `Telegram update ingest failed for tenant ${tenantId} update ${u.update_id}: ${(err as Error).message}`,
+          );
+        }
+        processed++;
+        if (u.update_id >= maxUpdateId) maxUpdateId = u.update_id + 1;
+      }
+    } catch (err) {
+      this.logger.warn(`Telegram getUpdates failed for tenant ${tenantId}: ${(err as Error).message}`);
+      return { processed };
+    }
+    if (maxUpdateId !== offset) {
+      await this.updateInboundOffset(tenantId, maxUpdateId);
+    }
+    return { processed };
+  }
+
+  /**
+   * Tick every tenant whose TELEGRAM integration is in polling mode. Used by
+   * the background interval started in onModuleInit.
+   */
+  async tickAllPollingTenants(): Promise<void> {
+    const rows = await this.prisma.integration.findMany({
+      where: { type: IntegrationType.TELEGRAM, deletedAt: null },
+      select: { tenantId: true, config: true },
+    });
+    for (const row of rows) {
+      const cfg = row.config as Prisma.JsonValue as Record<string, unknown> | null;
+      if (!cfg || cfg.inboundMode !== "polling") continue;
+      await this.tickTelegramPolling(row.tenantId).catch((err) => {
+        this.logger.warn(
+          `Telegram poll tick for tenant ${row.tenantId} failed: ${(err as Error).message}`,
+        );
+      });
+    }
+  }
+
+  /**
+   * Bump the saved inboundOffset on the TELEGRAM Integration. Done outside
+   * the normal upsert flow because admins shouldn't have to touch this —
+   * it's a server-managed cursor.
+   */
+  private async updateInboundOffset(tenantId: string, next: number): Promise<void> {
+    const row = await this.prisma.integration.findFirst({
+      where: { tenantId, type: IntegrationType.TELEGRAM, deletedAt: null },
+    });
+    if (!row) return;
+    const current = (row.config as Prisma.JsonValue) as Record<string, unknown> | null;
+    const newConfig = { ...(current ?? {}), inboundOffset: next };
+    await this.prisma.integration.update({
+      where: { id: row.id },
+      data: { config: newConfig as unknown as Prisma.InputJsonValue },
+    });
   }
 
   // ===== Webhook ingestion (called by Graph API, signed with X-Webhook-Secret) =====

@@ -14,6 +14,9 @@ export const SOCKET_EVENTS = {
   QA_READY: "qa:ready",
   SMS_STATUS: "sms:status",
   PIPELINE_UPDATED: "pipeline:updated",
+  // Inbox: a thread received a new message (inbound OR outbound). UI listens
+  // to refresh the conversation list + the open thread.
+  INBOX_MESSAGE: "inbox:message",
 } as const;
 
 export const QUEUES = {

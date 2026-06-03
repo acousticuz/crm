@@ -218,4 +218,175 @@ describe("M10 — Omnichannel inbox + AI draft + safety guardrails", () => {
       await prisma.tenant.delete({ where: { id: otherT.id } });
     }
   });
+
+  // --- Telegram inbound + reply ----------------------------------------
+  //
+  // The Telegram bot was previously outbound-only (TelegramNotifierService
+  // for supervisor pings). These tests cover the new inbound + reply path:
+  // (1) a Telegram update creates or links a Contact, opens a thread, and
+  //     stores the inbound message; (2) an operator reply hits the bot
+  //     sendMessage endpoint and is recorded as SENT.
+  describe("Telegram inbound + reply", () => {
+    const integrations = () =>
+      moduleRef.get<IntegrationsService>(IntegrationsService);
+
+    afterEach(async () => {
+      await prisma.inboxMessage.deleteMany({
+        where: { tenantId, thread: { channel: "telegram" } },
+      });
+      await prisma.inboxThread.deleteMany({ where: { tenantId, channel: "telegram" } });
+      await prisma.contact.deleteMany({ where: { tenantId, source: "telegram" } });
+      await prisma.integration.deleteMany({ where: { tenantId, type: "TELEGRAM" } });
+    });
+
+    function makeUpdate(opts: {
+      update_id: number;
+      chat_id: number;
+      message_id: number;
+      text: string;
+      from?: { id: number; first_name?: string; username?: string };
+      phone?: string;
+    }) {
+      return {
+        update_id: opts.update_id,
+        message: {
+          message_id: opts.message_id,
+          date: Math.floor(Date.now() / 1000),
+          text: opts.text,
+          chat: { id: opts.chat_id, type: "private" },
+          from: opts.from ?? { id: 4242, first_name: "Aziz" },
+          ...(opts.phone ? { contact: { phone_number: opts.phone } } : {}),
+        },
+      };
+    }
+
+    it("inbound update creates a Noma'lum-style contact, opens a thread, and stores the message", async () => {
+      const res = await inbox.ingestTelegramUpdate(
+        tenantId,
+        makeUpdate({
+          update_id: 100,
+          chat_id: 555,
+          message_id: 1,
+          text: "Salom, narxi qancha?",
+          from: { id: 4242, first_name: "Aziz", username: "azizov" },
+        }),
+      );
+      expect(res).not.toBeNull();
+      // Thread
+      const thread = await prisma.inboxThread.findFirst({
+        where: { tenantId, channel: "telegram", externalThreadId: "555" },
+      });
+      expect(thread).not.toBeNull();
+      expect(thread!.contactId).not.toBeNull();
+      // Contact — tagged with source="telegram" + name from the Update
+      const contact = await prisma.contact.findFirst({
+        where: { id: thread!.contactId!, tenantId },
+      });
+      expect(contact).not.toBeNull();
+      expect(contact!.source).toBe("telegram");
+      expect(contact!.fullName).toBe("Aziz");
+      // Message
+      const msg = await prisma.inboxMessage.findFirst({
+        where: { threadId: thread!.id, direction: "INBOUND" },
+      });
+      expect(msg).not.toBeNull();
+      expect(msg!.text).toBe("Salom, narxi qancha?");
+      expect(msg!.externalMessageId).toBe("1");
+    });
+
+    it("inbound update is idempotent — same update_id processed twice produces one message", async () => {
+      await inbox.ingestTelegramUpdate(
+        tenantId,
+        makeUpdate({ update_id: 200, chat_id: 777, message_id: 7, text: "hi" }),
+      );
+      await inbox.ingestTelegramUpdate(
+        tenantId,
+        makeUpdate({ update_id: 200, chat_id: 777, message_id: 7, text: "hi" }),
+      );
+      const count = await prisma.inboxMessage.count({
+        where: { tenantId, externalMessageId: "7" },
+      });
+      expect(count).toBe(1);
+    });
+
+    it("inbound update with a shared phone matches an existing contact instead of creating one", async () => {
+      const c = await prisma.contact.create({
+        data: { tenantId, fullName: "Allaqachon mavjud", phones: ["+998901112255"] },
+      });
+      try {
+        await inbox.ingestTelegramUpdate(
+          tenantId,
+          makeUpdate({
+            update_id: 300,
+            chat_id: 888,
+            message_id: 9,
+            text: "phone match",
+            from: { id: 5151, first_name: "PhoneMatch" },
+            phone: "+998901112255",
+          }),
+        );
+        const thread = await prisma.inboxThread.findFirst({
+          where: { tenantId, channel: "telegram", externalThreadId: "888" },
+        });
+        expect(thread!.contactId).toBe(c.id);
+        // No new "Noma'lum"-style contact was created.
+        const tgContacts = await prisma.contact.count({
+          where: { tenantId, source: "telegram" },
+        });
+        expect(tgContacts).toBe(0);
+      } finally {
+        await prisma.contact.delete({ where: { id: c.id } });
+      }
+    });
+
+    it("operator reply hits Telegram sendMessage with the saved bot token and records SENT", async () => {
+      // Seed an inbound thread first.
+      await inbox.ingestTelegramUpdate(
+        tenantId,
+        makeUpdate({ update_id: 400, chat_id: 999, message_id: 11, text: "kerak" }),
+      );
+      const thread = await prisma.inboxThread.findFirst({
+        where: { tenantId, channel: "telegram", externalThreadId: "999" },
+      });
+      // Configure the tenant's TELEGRAM integration (botToken is encrypted).
+      await cls.run(async () => {
+        writeContext(cls, {
+          tenantId,
+          userId,
+          role: UserRole.TENANT_ADMIN,
+          email: "admin@test.local",
+          skipTenantFilter: false,
+        });
+        await integrations().upsert("TELEGRAM" as never, {
+          config: { botToken: "tg-bot-secret", chatId: "999", purpose: "customer" },
+        });
+      });
+
+      const captured: { url?: string; body?: string } = {};
+      const fetchSpy = jest
+        .spyOn(global, "fetch")
+        .mockImplementation(async (url: RequestInfo | URL, init?: RequestInit) => {
+          captured.url = String(url);
+          captured.body = String(init?.body ?? "");
+          return new Response(
+            JSON.stringify({ ok: true, result: { message_id: 42 } }),
+            { status: 200 },
+          );
+        });
+      try {
+        const sent = await asTenant(() =>
+          inbox.sendManual(thread!.id, { text: "Salom, men yordamchi" }),
+        );
+        expect(captured.url).toContain("/bot");
+        expect(captured.url).toContain("/sendMessage");
+        expect(captured.body).toContain("999"); // chat_id surfaces in body
+        expect(captured.body).toContain("Salom, men yordamchi");
+        expect(sent.status).toBe("SENT");
+        expect(sent.externalMessageId).toBe("42");
+        expect(sent.direction).toBe("OUTBOUND");
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+  });
 });

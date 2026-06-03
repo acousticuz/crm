@@ -21,7 +21,19 @@ export const PUBLIC_FIELDS: Record<IntegrationType, string[]> = {
     "recordingsSource",
   ],
   [IntegrationType.SMS]: ["provider", "login", "sender", "allowFreeText"],
-  [IntegrationType.TELEGRAM]: ["webhookUrl", "purpose", "chatId"],
+  [IntegrationType.TELEGRAM]: [
+    "webhookUrl",
+    "purpose",
+    "chatId",
+    // Inbound message capture — picks between Telegram pushing to our HTTPS
+    // webhook ("webhook") and us polling Telegram getUpdates ("polling").
+    // "off" disables inbound entirely; the tenant only uses outbound
+    // notifications. inboundOffset is server-managed (last processed
+    // update_id) for the polling driver; admins should leave it alone.
+    "inboundMode",
+    "inboundWebhookUrl",
+    "inboundOffset",
+  ],
   [IntegrationType.INBOX]: ["provider", "pageId", "pageName"],
 };
 
