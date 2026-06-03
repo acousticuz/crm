@@ -3,11 +3,16 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+// Side-drawer (Sheet) primitives. Visual refresh only — every export, every
+// prop signature, every Radix piece stays as before.
+
 export const Sheet = DialogPrimitive.Root;
 export const SheetTrigger = DialogPrimitive.Trigger;
 export const SheetClose = DialogPrimitive.Close;
 export const SheetPortal = DialogPrimitive.Portal;
 
+// Lighter overlay + slightly stronger blur — keeps the page recognizable as
+// context behind the drawer instead of fading it to a muddy dim.
 export const SheetOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
@@ -15,7 +20,9 @@ export const SheetOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-50 bg-black/30 backdrop-blur-[1px] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "fixed inset-0 z-50 bg-slate-950/30 backdrop-blur-[3px]",
+      "data-[state=open]:animate-in data-[state=closed]:animate-out",
+      "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className,
     )}
     {...props}
@@ -32,13 +39,24 @@ export const SheetContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed inset-y-0 right-0 z-50 flex h-full w-full max-w-lg flex-col gap-4 overflow-y-auto border-l bg-background p-6 shadow-lg outline-none data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
+        // Modest max-width and the new overlay shadow — modern drawers feel
+        // like sheets, not slabs.
+        "fixed inset-y-0 right-0 z-50 flex h-full w-full max-w-md flex-col gap-5",
+        "overflow-y-auto border-l bg-card p-6 shadow-overlay outline-none",
+        "data-[state=closed]:animate-out data-[state=open]:animate-in",
+        "data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
         className,
       )}
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring">
+      <DialogPrimitive.Close
+        className={cn(
+          "absolute right-4 top-4 inline-flex h-7 w-7 items-center justify-center rounded-md",
+          "text-muted-foreground transition-colors hover:bg-surface hover:text-foreground",
+          "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        )}
+      >
         <X className="h-4 w-4" />
         <span className="sr-only">Close</span>
       </DialogPrimitive.Close>
@@ -48,7 +66,9 @@ export const SheetContent = React.forwardRef<
 SheetContent.displayName = "SheetContent";
 
 export function SheetHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("flex flex-col space-y-1.5 text-left", className)} {...props} />;
+  // Slightly tighter spacing — Inter is more compact than the system font this
+  // file was originally tuned for.
+  return <div className={cn("flex flex-col gap-1 text-left", className)} {...props} />;
 }
 
 export const SheetTitle = React.forwardRef<
@@ -57,7 +77,7 @@ export const SheetTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Title
     ref={ref}
-    className={cn("text-lg font-semibold text-foreground", className)}
+    className={cn("text-base font-semibold tracking-tightish text-foreground", className)}
     {...props}
   />
 ));
@@ -69,7 +89,7 @@ export const SheetDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Description
     ref={ref}
-    className={cn("text-sm text-muted-foreground", className)}
+    className={cn("text-xs text-muted-foreground", className)}
     {...props}
   />
 ));

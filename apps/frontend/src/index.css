@@ -2,55 +2,210 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Acoustic CRM — Design tokens.
+ *
+ * Refined neutral palette anchored on zinc/slate, a single saturated primary
+ * (indigo-600 equivalent), and explicit semantic states. Tuned for a clean,
+ * minimalist UI with generous whitespace.
+ *
+ * Every page reads from these HSL variables — never hard-code a hex anywhere
+ * downstream. Light + dark share the same variable names so components stay
+ * theme-agnostic.
+ */
+
 @layer base {
   :root {
+    /* Surfaces. background = page, card = elevated rect, surface = inset.   */
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --foreground: 222 47% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
+    --card-foreground: 222 47% 11%;
+    --surface: 220 16% 97%;
+
+    /* Brand — one accent. Indigo 600. Used sparingly: primary actions, links,
+       active states. Everything else stays neutral. */
+    --primary: 234 70% 56%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Neutral chrome. Secondary/accent collapse to the same surface so we
+       don't accumulate three near-identical greys. */
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+    --accent: 220 14% 96%;
+    --accent-foreground: 222 47% 11%;
+
+    /* Semantic — use these tokens, not raw red/green/amber. */
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 60% 38%;
+    --success-foreground: 0 0% 100%;
+    --warning: 32 92% 50%;
+    --warning-foreground: 30 80% 16%;
+    --info: 217 91% 60%;
+    --info-foreground: 0 0% 100%;
+
+    /* Lines + focus. Border is the lightest hairline; ring matches primary. */
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 234 70% 56%;
+
+    /* Geometry. 6px corner — tighter than shadcn default 8px. */
+    --radius: 0.375rem;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    --background: 224 23% 7%;
+    --foreground: 220 14% 96%;
+    --card: 224 22% 9%;
+    --card-foreground: 220 14% 96%;
+    --surface: 224 20% 11%;
+
+    --primary: 234 80% 66%;
+    --primary-foreground: 222 47% 11%;
+
+    --secondary: 224 15% 16%;
+    --secondary-foreground: 220 14% 96%;
+    --muted: 224 15% 16%;
+    --muted-foreground: 220 9% 64%;
+    --accent: 224 15% 16%;
+    --accent-foreground: 220 14% 96%;
+
+    --destructive: 0 68% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 55% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 32 85% 55%;
+    --warning-foreground: 30 80% 16%;
+    --info: 217 85% 65%;
+    --info-foreground: 0 0% 100%;
+
+    --border: 224 15% 18%;
+    --input: 224 15% 18%;
+    --ring: 234 80% 66%;
   }
 }
 
 @layer base {
+  /* Border default applies to every element so designers can sketch with
+     border utilities without re-specifying the color. */
   * {
     @apply border-border;
   }
+
+  html {
+    /* 15px root — Inter is denser than the 16px web default; this preserves
+       reading rhythm while feeling more spacious. */
+    font-size: 15px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
   body {
-    @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    @apply bg-background font-sans text-foreground;
+    /* Inter ligatures + tabular numerals for KPI tiles. */
+    font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1, "cv11" 1;
+    font-variant-ligatures: contextual;
+  }
+
+  /* Headings inherit a tighter tracking from the type scale; reset weight so
+     downstream code that omits font-semibold still reads as a heading. */
+  h1, h2, h3, h4 {
+    @apply font-semibold tracking-tightish text-foreground;
+  }
+
+  /* Native form controls inherit the design language by default — no need
+     to import a shadcn primitive for every <select>. */
+  select {
+    @apply h-9 rounded-md border border-input bg-background px-2.5 pr-7 text-sm text-foreground shadow-xs outline-none ring-offset-background transition-colors;
+    @apply focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1;
+    /* Custom chevron — keep the layout clean even without a wrapper. */
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 0.5rem center;
+    background-size: 0.875rem;
+    appearance: none;
+  }
+  select:disabled {
+    @apply opacity-60;
+  }
+
+  /* Color picker — line it up with the input height + radius rest of the
+     system uses so per-tag rang swatches don't feel out of place. */
+  input[type="color"] {
+    @apply h-9 w-10 cursor-pointer rounded-md border border-input bg-background p-0.5;
+  }
+  /* Native date/time match the input style without help from a primitive. */
+  input[type="date"],
+  input[type="datetime-local"],
+  input[type="time"],
+  input[type="number"] {
+    @apply h-9 rounded-md border border-input bg-background px-2.5 text-sm text-foreground shadow-xs;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1;
+  }
+
+  /* Tables — used inline by the dashboard and several reports. Light row
+     dividers, surface-tinted header, no outer borders. */
+  table {
+    @apply w-full border-collapse text-sm;
+  }
+  thead {
+    @apply text-2xs font-medium uppercase tracking-wider text-muted-foreground;
+  }
+  th {
+    @apply px-2 py-2 text-left font-medium;
+  }
+  td {
+    @apply px-2 py-2.5 align-middle;
+  }
+  tbody tr {
+    @apply border-t border-border/70;
+  }
+  tbody tr:hover {
+    @apply bg-surface/50;
+  }
+
+  /* Custom scrollbar — neutral, narrow, blends into the page. Subtle but
+     consistent across Chrome/Safari/Edge. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--muted-foreground) / 0.25);
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--muted-foreground) / 0.4);
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  /* Numerals — tabular wherever data lines up vertically. */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Reusable atoms. Kept here (not in components/ui) so downstream code can
+   sprinkle them without a forwardRef wrapper. */
+@layer components {
+  /* Card-style block. */
+  .card-surface {
+    @apply rounded-lg border bg-card text-card-foreground shadow-xs;
+  }
+  /* Inset block one elevation below the card. */
+  .inset-surface {
+    @apply rounded-md border bg-surface;
+  }
+  /* Focused tile for KPI / metric callouts. */
+  .stat-tile {
+    @apply card-surface p-4;
   }
 }

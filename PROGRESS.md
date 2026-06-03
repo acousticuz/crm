@@ -2,9 +2,30 @@
 
 ## Holat
 - **Asosiy 11 milestone + Settings + Call-fixes + Integration-runtime + Operator-extension tugatildi** 🎉
-- Joriy ish: **Reports — ism+extension, Call.branchId va oylik filial reporti, Murabbiylik aggregatsiyasi, Tag inline yaratish**
+- Joriy ish: **Design system — refined minimalist (Inter, tokenlar, shadcn primitivlari)**
 - Status: **done**
 - Repo: https://github.com/acousticuz/crm
+
+## Design system — modern minimalist (2026-06-03)
+- [x] **Design tokenlar**: `tailwind.config.js` ga `fontFamily: Inter`, semantic colors (success/warning/info), shadow ladder (xs/sm/md/lg/overlay), refined type scale (2xs–4xl) Inter uchun tunelangan, kichikroq radius (6px), container padding qisqartirildi (1→2rem). `index.css` ga zinc-asosli neytral palette, bitta indigo primary, dark mode parallel tokenlar, `--surface` qatlami, semantic CSS variables (success/warning/info/destructive).
+- [x] **Inter font**: `index.html` ga Google Fonts preconnect + Inter (400/500/600/700). `body` da `font-feature-settings` ligatures + tabular numerals (KPI tile'lar uchun).
+- [x] **shadcn primitivlar qayta uslublash** (API o'zgarmadi, faqat classlar):
+  - `button.tsx` — kichikroq h-9 default, tightish tracking, brightness hover, shadow-xs (was solid bg/90).
+  - `input.tsx` / `textarea.tsx` — h-9, hairline border, shadow-xs, primary focus ring with offset-1.
+  - `badge.tsx` — text-2xs, gap-1, soft `${color}24` tint.
+  - `label.tsx` — muted-by-default text-xs, recede against the input.
+  - `sheet.tsx` — bg-card + shadow-overlay, soft scrim, max-w-md, close button bg-surface hover.
+- [x] **Native HTML uslubi** (`@layer base` da): `<select>` custom chevron + h-9, `<input[type=date|color|number]>` Input bilan bir xil, `<table>` minimal hairline + surface hover, scrollbar narrow neutral.
+- [x] **Reusable utility classlar**: `.card-surface`, `.inset-surface`, `.stat-tile`.
+- [x] **`src/lib/tokens.ts`** — `readToken()` / `tokenColor()` chart va canvas uchun (recharts strokeColor).
+- [x] **`STYLE_GUIDE.md`** — to'liq tokenlar jadval, type scale, shadow ladder, layout qoidalar, yangi rang qo'shish qadamlari.
+
+### Verifikatsiya
+- Mantiqqa, hook'larga, routelarga, API call'larga TEGILMADI. Faqat 8 ta vizual fayl (tailwind.config, index.css, index.html, 5 ta shadcn primitiv + tokens.ts + STYLE_GUIDE.md).
+- `pnpm build` — 5 paket xatosiz (frontend CSS 22.8KB → 31.5KB, ranglar+shadows kengayishi tabiiy).
+- `pnpm test` — backend **117/117** (vizual o'zgarish backend testiga ta'sir qilmadi).
+- `pnpm lint` — 0 xato.
+- commit `feat(design): modern minimalist design system and base components` + push.
 
 ## Reports + branch + coaching + tag UX (2026-06-03)
 - [x] **Operator ismi va extension hamma joyda**: `OperatorKpi` ga `extension` qo'shildi. `operatorKpi()` foydalanuvchini select qilganda `fullName + extension` ham qaytaradi. `teamSummary()` har row'da extension. Dashboard Jamoa taqqoslash chartining XAxis'i `"Aziz (101)"` ko'rinishida.
