@@ -90,8 +90,16 @@ export class InboxService implements OnModuleInit {
     // Skip the background poller during jest so tests stay deterministic
     // and the worker doesn't leak open handles. Production starts it.
     if (process.env.NODE_ENV === "test") return;
-    const intervalMs = Number(process.env.TELEGRAM_POLL_INTERVAL_MS ?? 5000);
+    // Long-polling: each tick blocks up to ~25s waiting on Telegram. A 30s
+    // interval keeps consecutive ticks from overlapping; configurable for
+    // tenants who want shorter wake-ups (at the cost of more empty requests).
+    const intervalMs = Number(process.env.TELEGRAM_POLL_INTERVAL_MS ?? 30_000);
     if (intervalMs <= 0) return;
+    // Kick off immediately so a freshly-saved bot token gets ingest within
+    // seconds — not on the next interval tick.
+    this.tickAllPollingTenants().catch((err) => {
+      this.logger.warn(`Telegram initial poll failed: ${(err as Error).message}`);
+    });
     this.pollTimer = setInterval(() => {
       this.tickAllPollingTenants().catch((err) => {
         this.logger.warn(`Telegram polling tick failed: ${(err as Error).message}`);
@@ -346,21 +354,30 @@ export class InboxService implements OnModuleInit {
    * Long-polling driver. Calls Telegram getUpdates with the stored offset,
    * processes each new update, then advances the offset on the Integration
    * config so the next tick only fetches newer ones.
+   *
+   * Polling is the DEFAULT — the only way to disable it is inboundMode="off"
+   * (or "webhook"). Tenants whose admin just saved a botToken get inbound
+   * out of the box, no extra config required. That mirrors what most
+   * deployments want and matches the behavior the user reported was
+   * missing.
+   *
+   * The Telegram timeout query is 25s (long-poll). Telegram caps it server
+   * side, and a long wait dramatically reduces empty round-trips compared to
+   * the previous timeout=0 which spammed the API every interval tick.
    */
   async tickTelegramPolling(tenantId: string): Promise<{ processed: number }> {
     const cfg = await this.integrations.getDecryptedConfig(tenantId, IntegrationType.TELEGRAM);
     if (!cfg) return { processed: 0 };
-    const mode = String(cfg.inboundMode ?? "off");
-    if (mode !== "polling") return { processed: 0 };
+    if (!this.isPollingEligible(cfg)) return { processed: 0 };
     const token = String(cfg.botToken ?? "");
-    if (!token) return { processed: 0 };
     const offset = Number(cfg.inboundOffset ?? 0);
     let processed = 0;
     let maxUpdateId = offset;
     try {
-      const url = `https://api.telegram.org/bot${token}/getUpdates?timeout=0${
-        offset ? `&offset=${offset}` : ""
-      }`;
+      const params = new URLSearchParams();
+      params.set("timeout", "25");
+      if (offset) params.set("offset", String(offset));
+      const url = `https://api.telegram.org/bot${token}/getUpdates?${params.toString()}`;
       const res = await fetch(url);
       if (!res.ok) return { processed: 0 };
       const json = (await res.json().catch(() => ({}))) as {
@@ -390,8 +407,22 @@ export class InboxService implements OnModuleInit {
   }
 
   /**
-   * Tick every tenant whose TELEGRAM integration is in polling mode. Used by
-   * the background interval started in onModuleInit.
+   * A tenant is eligible to poll when a bot token is configured AND the
+   * admin has not explicitly disabled inbound or pointed the bot at a
+   * webhook. Missing/empty/null inboundMode means "polling" (the safe
+   * default — most local-network deployments can't accept a webhook).
+   */
+  private isPollingEligible(cfg: Record<string, unknown>): boolean {
+    if (!cfg.botToken || String(cfg.botToken).trim() === "") return false;
+    const mode = cfg.inboundMode == null ? "polling" : String(cfg.inboundMode);
+    if (mode === "off") return false;
+    if (mode === "webhook") return false;
+    return true;
+  }
+
+  /**
+   * Tick every tenant whose TELEGRAM integration is eligible for polling.
+   * Used by the background interval started in onModuleInit.
    */
   async tickAllPollingTenants(): Promise<void> {
     const rows = await this.prisma.integration.findMany({
@@ -399,8 +430,14 @@ export class InboxService implements OnModuleInit {
       select: { tenantId: true, config: true },
     });
     for (const row of rows) {
-      const cfg = row.config as Prisma.JsonValue as Record<string, unknown> | null;
-      if (!cfg || cfg.inboundMode !== "polling") continue;
+      // Eligibility uses the decrypted config so it sees the real botToken
+      // value (the row's config has the secret in `_encrypted`). Re-resolve
+      // once per row to keep the multi-tenant boundary clean.
+      const decrypted = await this.integrations.getDecryptedConfig(
+        row.tenantId,
+        IntegrationType.TELEGRAM,
+      );
+      if (!decrypted || !this.isPollingEligible(decrypted)) continue;
       await this.tickTelegramPolling(row.tenantId).catch((err) => {
         this.logger.warn(
           `Telegram poll tick for tenant ${row.tenantId} failed: ${(err as Error).message}`,

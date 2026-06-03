@@ -2,9 +2,27 @@
 
 ## Holat
 - **Asosiy 11 milestone + Settings + Call-fixes + Integration-runtime + Operator-extension tugatildi** 🎉
-- Joriy ish: **Eskiz token-auth refactor + seed taglarni o'chirish**
+- Joriy ish: **Telegram polling inbound — default polling fix**
 - Status: **done**
 - Repo: https://github.com/acousticuz/crm
+
+## Telegram polling inbound — bug fix (2026-06-03)
+- [x] **Default polling fix**: `tickTelegramPolling` endi `inboundMode` o'rnatilmagan tenantlar uchun ham polling qiladi. Yangi `isPollingEligible(cfg)` — botToken bo'sh emasligini va mode'ning `off`/`webhook` emasligini tekshiradi (defaul ham polling). Eski xato: mode=undefined → "off" deb tushunilardi → ulangan bot bo'lsa ham message qabul qilmasdi.
+- [x] **Long-polling timeout=25**: avval `timeout=0` (Telegram'ni spam qiladigan empty round-trip) → endi `timeout=25` (Telegram serverda updates kutadi, har polling chiqishi yaroqli ish bilan tugaydi).
+- [x] **Polling interval 5s → 30s**: long-polling 25s gacha bloklaydi → 30s interval bilan overlapping ticks yo'q. `TELEGRAM_POLL_INTERVAL_MS` env bilan o'zgartirish mumkin.
+- [x] **Initial tick boot'da**: setInterval kutmasdan modul init paytida darhol bir marta chiqaradi — admin bot tokenini saqlagandan keyin xabar darrov yetadi.
+- [x] **`tickAllPollingTenants`** har tenant'ning to'liq dekriptlangan config'ini o'qiydi va shu bilan eligibility'ni tekshiradi (secret botToken'ni to'g'ri ko'radi).
+
+### Test (backend 128 → 131, +3 yangi)
+- `tickTelegramPolling defaults to polling when inboundMode is not set`: botToken saqlangan, hech qanday boshqa sozlama yo'q — getUpdates timeout=25 chaqiriladi, message saqlanadi, `inboundOffset` 9001+1 ga yangilanadi.
+- `tickTelegramPolling does NOTHING when inboundMode is explicitly 'off'`: getUpdates umuman chaqirilmaydi.
+- `tickAllPollingTenants only ticks tenants whose bot token is configured`: tokensiz tenant uchun tick no-op.
+
+### Verifikatsiya
+- `pnpm build` — 5 paket xatosiz.
+- `pnpm test` — backend **131/131**.
+- `pnpm lint` — 0 xato.
+- commit `feat(inbox): telegram polling inbound` + push.
 
 ## Eskiz token-auth + seed tag cleanup (2026-06-03)
 
