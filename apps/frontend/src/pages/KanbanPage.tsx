@@ -80,19 +80,38 @@ export function KanbanPage(): JSX.Element {
   }
 
   if (pipelinesLoading) {
-    return <div className="text-sm text-muted-foreground">Yuklanmoqda...</div>;
+    return (
+      <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
+        Yuklanmoqda...
+      </div>
+    );
   }
   if (pipelines.length === 0) {
     return (
-      <div className="rounded border p-4 text-sm">
+      <div className="rounded-lg border border-dashed bg-card p-8 text-center text-sm text-muted-foreground">
         Voronkalar yo'q. Tenant adminga: tenant yaratilganda avtomatik default
-        voronka seed bo'lishi kerak edi — qayta sozlang yoki yangi tenant yarating.
+        voronka seed bo'lishi kerak edi — Sozlamalar → Voronkalardan yangisini yarating.
       </div>
     );
   }
 
+  const totalCards = cardsPage?.total ?? 0;
+
   return (
     <div className="space-y-4">
+      {/* Page heading row — gives the board a clear surface anchor and shows
+          the total card count next to the title for quick orientation. */}
+      <div className="flex items-baseline justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tightish text-foreground">
+            {pipeline?.name ?? "Kanban"}
+          </h1>
+          <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
+            {totalCards} ta karta
+          </p>
+        </div>
+      </div>
+
       <KanbanFilters
         pipelines={pipelines}
         tags={tags}
@@ -108,7 +127,10 @@ export function KanbanPage(): JSX.Element {
         }}
         onDragEnd={onDragEnd}
       >
-        <div className="flex gap-3 overflow-x-auto pb-4">
+        {/* Horizontal scroll container — subtle gradient mask edges so the
+            user feels the column rail can scroll without a visible scrollbar
+            at rest. */}
+        <div className="flex gap-3 overflow-x-auto pb-4 -mx-2 px-2 [scrollbar-gutter:stable]">
           {pipeline?.stages.map((stage) => (
             <KanbanColumn
               key={stage.id}

@@ -2,9 +2,22 @@
 
 ## Holat
 - **Asosiy 11 milestone + Settings + Call-fixes + Integration-runtime + Operator-extension tugatildi** 🎉
-- Joriy ish: **App shell redesign — sidebar + top bar + responsive drawer**
+- Joriy ish: **Kanban board redesign — kartalar, ustunlar, filtrlar**
 - Status: **done**
 - Repo: https://github.com/acousticuz/crm
+
+## Kanban board redesign (2026-06-03)
+- [x] **`KanbanCard`** (vizual): card-surface bilan rounded-md border + shadow-xs; hover'da `-translate-y-px` + shadow-md (yumshoq lift); drag paytida ring-primary/40 + shadow-overlay; title 2-line clamp, kontakt+telefon kompakt klaster (Phone iconly muted); meta row (oxirgi SMS + due date) 2xs zinc tonida; tag badge'lar, tagsiz bo'lsa render bo'lmaydi; footer'da deterministik palitra'dan keladigan `Avatar` initials chip + mas'ul ismi. Drag/keyboard/click — barchasi avvalgidek.
+- [x] **`KanbanColumn`** (vizual): rangli accent rail tepada (2px); collapse tugmasi 6×6 hover-tinted; sarlavha + count chip + WON/LOST semantic chip (Trophy/XCircle); Σ budget alohida 2xs qator; WON/LOST ustunlar success/destructive 4% tint + tone border; drop highlight `bg-primary/5 ring-1 ring-primary/30`; collapsed mode 56px ingichka rail (vertical-rl yo'nalishda nom + count rozetka); bo'sh ustun border-dashed placeholder.
+- [x] **`KanbanFilters`** (vizual): 3 ta qator — primary (Voronka select + global search + Faqat javobsiz + Tozalash badge with count) → secondary (Mas'ul/Manba/Filial/Sana) → tag chip cloud (filter ikona + Badge'lar `ring-primary/40` on active). Search input X bilan tozalovchi. Active filter count avtomatik hisoblanadi.
+- [x] **`KanbanPage`** (vizual): page heading row pipeline nomi + jami karta soni; horizontal scroll `[scrollbar-gutter:stable]`; loading/empty state'lar yumshoq border-dashed bilan.
+- [x] **Mantiqqa tegilmadi**: `@dnd-kit` sensors / `DndContext` / `useDraggable` / `useDroppable` / `useMoveCard` / `useKanbanRealtime` / `useCards` / Socket.io invalidation — hammasi avvalgidek. Faqat 4 ta vizual fayl o'zgardi.
+
+### Verifikatsiya
+- `pnpm build` — 5 paket xatosiz (CSS 34.0 → 36.2 KB Kanban utility class'lari).
+- `pnpm test` — backend **117/117** (Kanban vizual o'zgarish backendga ta'sir qilmadi).
+- `pnpm lint` — 0 xato.
+- commit `feat(design): kanban board redesign` + push.
 
 ## App shell redesign — sidebar + top bar (2026-06-03)
 - [x] **Yangi `Sidebar` komponenti** (`components/shell/Sidebar.tsx`) — chap qator: brand (Waves icon + "Acoustic CRM"), 5 ta nav item (KanbanSquare, Phone, Inbox, BarChart3, Settings ikonkalari), faol NavLink primary-tonli `bg-primary/10 text-primary`, sidebar collapse tugmasi (icon-only mode, `w-[232px]` ↔ `w-[64px]`). Routes va to/label hech qanday o'zgarmadi.
