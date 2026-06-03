@@ -1,62 +1,53 @@
-import { Link, NavLink, Outlet } from "react-router-dom";
-import { LogOut } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useState } from "react";
+import { Outlet } from "react-router-dom";
 import { IncomingCallToast } from "@/components/IncomingCallToast";
-import { SalesScriptPanel } from "@/components/SalesScriptPanel";
-import { cn } from "@/lib/utils";
-import { useAuth } from "@/lib/auth";
+import { Sidebar } from "@/components/shell/Sidebar";
+import { TopBar } from "@/components/shell/TopBar";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 
-const navItems = [
-  { to: "/kanban", label: "Kanban" },
-  { to: "/calls", label: "Qo'ng'iroqlar" },
-  { to: "/inbox", label: "Inbox" },
-  { to: "/dashboard", label: "Dashboard" },
-  { to: "/settings", label: "Sozlamalar" },
-];
-
+/**
+ * Application shell — sidebar + top bar + content. Pure layout: every route,
+ * link, hook, and provider from the previous shell stays as-is.
+ *
+ * Responsive behavior:
+ *   - lg+ (≥1024px): persistent left sidebar, collapsible to icons.
+ *   - <lg: sidebar disappears off-canvas and reappears as a drawer (Sheet)
+ *     triggered from the top bar hamburger.
+ */
 export function AppLayout(): JSX.Element {
-  const { user, logout } = useAuth();
+  // Desktop collapse persists across navigation (component stays mounted).
+  // Mobile drawer is a separate transient state.
+  const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      <header className="border-b">
-        <div className="container flex h-14 items-center justify-between">
-          <div className="flex items-center gap-6">
-            <Link to="/" className="text-lg font-semibold text-primary">
-              Acoustic CRM
-            </Link>
-            <nav className="flex gap-2 text-sm">
-              {navItems.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  className={({ isActive }) =>
-                    cn(
-                      "px-3 py-1.5 rounded-md transition-colors hover:bg-accent",
-                      isActive && "bg-accent font-medium",
-                    )
-                  }
-                >
-                  {item.label}
-                </NavLink>
-              ))}
-            </nav>
+    <div className="flex min-h-screen bg-background">
+      {/* Desktop sidebar (always visible at lg+). */}
+      <div className="sticky top-0 hidden h-screen lg:block">
+        <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((v) => !v)} />
+      </div>
+
+      {/* Mobile drawer — reuses the same Sidebar so behavior never forks. */}
+      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+        <SheetContent className="w-[232px] max-w-[232px] border-r-0 p-0">
+          <Sidebar
+            collapsed={false}
+            onToggle={() => undefined}
+            onNavigate={() => setMobileOpen(false)}
+          />
+        </SheetContent>
+      </Sheet>
+
+      {/* Main column: top bar pinned to viewport top + scrollable content. */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <TopBar onOpenMobileSidebar={() => setMobileOpen(true)} />
+        <main className="flex-1 px-4 py-6 lg:px-8">
+          <div className="mx-auto w-full max-w-screen-2xl">
+            <Outlet />
           </div>
-          <div className="flex items-center gap-3 text-sm">
-            <SalesScriptPanel />
-            {user && (
-              <span className="text-muted-foreground">
-                {user.email} · <span className="text-xs">{user.role}</span>
-              </span>
-            )}
-            <Button variant="ghost" size="sm" onClick={logout}>
-              <LogOut className="mr-1 h-4 w-4" /> Chiqish
-            </Button>
-          </div>
-        </div>
-      </header>
-      <main className="container flex-1 py-6">
-        <Outlet />
-      </main>
+        </main>
+      </div>
+
       <IncomingCallToast />
     </div>
   );

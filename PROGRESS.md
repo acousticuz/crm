@@ -2,9 +2,22 @@
 
 ## Holat
 - **Asosiy 11 milestone + Settings + Call-fixes + Integration-runtime + Operator-extension tugatildi** 🎉
-- Joriy ish: **Design system — refined minimalist (Inter, tokenlar, shadcn primitivlari)**
+- Joriy ish: **App shell redesign — sidebar + top bar + responsive drawer**
 - Status: **done**
 - Repo: https://github.com/acousticuz/crm
+
+## App shell redesign — sidebar + top bar (2026-06-03)
+- [x] **Yangi `Sidebar` komponenti** (`components/shell/Sidebar.tsx`) — chap qator: brand (Waves icon + "Acoustic CRM"), 5 ta nav item (KanbanSquare, Phone, Inbox, BarChart3, Settings ikonkalari), faol NavLink primary-tonli `bg-primary/10 text-primary`, sidebar collapse tugmasi (icon-only mode, `w-[232px]` ↔ `w-[64px]`). Routes va to/label hech qanday o'zgarmadi.
+- [x] **Yangi `TopBar` komponenti** (`components/shell/TopBar.tsx`) — minimal h-14 sticky bar: hamburger (mobile-only), global search Input (vizual placeholder, `Search` ikona), `SalesScriptPanel` (avvalgidek), `Bell` notification placeholder, foydalanuvchi email + role chiziq, "Chiqish" icon button. `bg-card/95 backdrop-blur` yumshoq glass effect.
+- [x] **`AppLayout` qayta tuzilishi**: `flex` row — lg+ da persistent sticky sidebar, narrow'da Sheet ichida drawer. Mavjud `Sheet` primitive qayta ishlatildi. Main column: sticky TopBar + scrollable `<main>` `max-w-screen-2xl` content. `IncomingCallToast` o'z joyida qoldi.
+- [x] **Responsive**: `<lg` (1024px ostida) sidebar drawer rejimida, top bar hamburger orqali ochiladi; nav link bosilganda drawer avtomatik yopiladi (`onNavigate` callback). Desktop'da collapse tugmasi sidebar'ni icon-only ga aylantiradi.
+- [x] **Mantiqqa tegilmadi**: hooks, routes, auth, API call'lar, `IncomingCallToast`, `SalesScriptPanel`, nav itemlarining `to` qiymatlari — hammasi avvalgidek. Faqat 3 ta fayl: 2 ta yangi (`Sidebar.tsx`, `TopBar.tsx`) + `AppLayout.tsx` to'liq qayta yozildi.
+
+### Verifikatsiya
+- `pnpm build` — 5 paket xatosiz (CSS 31.5 → 34.0 KB sidebar+topbar utility'lari).
+- `pnpm test` — backend **117/117** (vizual o'zgarish testga ta'sir qilmadi).
+- `pnpm lint` — 0 xato.
+- commit `feat(design): app shell, sidebar, topbar redesign` + push.
 
 ## Design system — modern minimalist (2026-06-03)
 - [x] **Design tokenlar**: `tailwind.config.js` ga `fontFamily: Inter`, semantic colors (success/warning/info), shadow ladder (xs/sm/md/lg/overlay), refined type scale (2xs–4xl) Inter uchun tunelangan, kichikroq radius (6px), container padding qisqartirildi (1→2rem). `index.css` ga zinc-asosli neytral palette, bitta indigo primary, dark mode parallel tokenlar, `--surface` qatlami, semantic CSS variables (success/warning/info/destructive).
