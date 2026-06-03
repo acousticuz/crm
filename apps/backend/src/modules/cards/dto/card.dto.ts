@@ -1,5 +1,6 @@
 import { Transform, Type } from "class-transformer";
 import {
+  IsArray,
   IsBoolean,
   IsDateString,
   IsInt,
@@ -103,6 +104,17 @@ export class FindCardsDto {
   @IsOptional()
   @IsString()
   branchId?: string;
+
+  // Multi-select branch filter. Accepts an array of branch ids; cards whose
+  // branchId matches any selected branch are returned. Accepts either the
+  // axios-style repeated query (`?branchIds=a&branchIds=b`) or a single
+  // string (coerced to a one-element array) so an older client can still
+  // filter by one branch.
+  @IsOptional()
+  @Transform(({ value }) => (Array.isArray(value) ? value : value ? [value] : []))
+  @IsArray()
+  @IsString({ each: true })
+  branchIds?: string[];
 
   @IsOptional()
   @IsString()

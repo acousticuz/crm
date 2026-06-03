@@ -295,4 +295,53 @@ describe("M3 — Kanban (pipelines, stages, cards, tags, notes, tasks)", () => {
     expect(StageType.WON).toBe("WON");
     expect(StageType.LOST).toBe("LOST");
   });
+
+  // Kanban filter bar now supports a multi-select branch filter — the DTO
+  // accepts `branchIds[]` and the list query uses `IN (...)`. A card whose
+  // branch matches ANY selected branch should be returned; a card outside
+  // every selected branch must be excluded.
+  it("cards.list({ branchIds: [a, b] }) returns cards from any selected branch", async () => {
+    const branchA = await prisma.branch.create({
+      data: { tenantId, name: `branch-a-${runId}` },
+    });
+    const branchB = await prisma.branch.create({
+      data: { tenantId, name: `branch-b-${runId}` },
+    });
+    const branchC = await prisma.branch.create({
+      data: { tenantId, name: `branch-c-${runId}` },
+    });
+    const cardA = await asTenant(() =>
+      cards.create({ title: `A-${runId}`, contactId, branchId: branchA.id }),
+    );
+    const cardB = await asTenant(() =>
+      cards.create({ title: `B-${runId}`, contactId, branchId: branchB.id }),
+    );
+    const cardC = await asTenant(() =>
+      cards.create({ title: `C-${runId}`, contactId, branchId: branchC.id }),
+    );
+
+    try {
+      const both = await asTenant(() =>
+        cards.list({ branchIds: [branchA.id, branchB.id] }),
+      );
+      const ids = both.items.map((c) => c.id);
+      expect(ids).toEqual(expect.arrayContaining([cardA.id, cardB.id]));
+      expect(ids).not.toContain(cardC.id);
+
+      // A single-element branchIds still works (multi-select with one pick).
+      const justA = await asTenant(() => cards.list({ branchIds: [branchA.id] }));
+      const idsA = justA.items.map((c) => c.id);
+      expect(idsA).toContain(cardA.id);
+      expect(idsA).not.toContain(cardB.id);
+      expect(idsA).not.toContain(cardC.id);
+    } finally {
+      // Cleanup so other suites aren't affected.
+      await prisma.card.deleteMany({
+        where: { id: { in: [cardA.id, cardB.id, cardC.id] } },
+      });
+      await prisma.branch.deleteMany({
+        where: { id: { in: [branchA.id, branchB.id, branchC.id] } },
+      });
+    }
+  });
 });

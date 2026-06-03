@@ -1,10 +1,11 @@
-import { Filter, PhoneMissed, Search, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Building2, Check, ChevronDown, Filter, PhoneMissed, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { Pipeline, Tag, UserSummary } from "@/lib/types";
-import type { CardFilters } from "@/hooks/useKanban";
+import { useBranches, type CardFilters } from "@/hooks/useKanban";
 
 interface Props {
   pipelines: Pipeline[];
@@ -28,9 +29,11 @@ export function KanbanFilters({ pipelines, tags, users, filters, onChange }: Pro
   }
   // Count user-applied filters (everything other than the pipeline tab) so
   // we can show "Tozalash" only when something actually needs clearing.
-  const activeCount = Object.entries(filters).filter(
-    ([k, v]) => k !== "pipelineId" && v !== undefined && v !== "" && v !== false,
-  ).length;
+  const activeCount = Object.entries(filters).filter(([k, v]) => {
+    if (k === "pipelineId") return false;
+    if (Array.isArray(v)) return v.length > 0;
+    return v !== undefined && v !== "" && v !== false;
+  }).length;
 
   return (
     <div className="space-y-3 rounded-lg border bg-card p-3 shadow-xs">
@@ -119,12 +122,10 @@ export function KanbanFilters({ pipelines, tags, users, filters, onChange }: Pro
           />
         </Field>
 
-        <Field label="Filial ID">
-          <Input
-            value={filters.branchId ?? ""}
-            onChange={(e) => patch({ branchId: e.target.value || undefined })}
-            placeholder="branch..."
-            className="w-32"
+        <Field label="Filial">
+          <BranchMultiSelect
+            value={filters.branchIds ?? []}
+            onChange={(next) => patch({ branchIds: next.length > 0 ? next : undefined })}
           />
         </Field>
 
@@ -188,5 +189,143 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       </span>
       {children}
     </label>
+  );
+}
+
+/**
+ * Multi-select branch picker — replaces the old free-text "Filial ID" input.
+ * Lists the tenant's actual branches by name and shows selected branches as
+ * removable chips beneath the trigger. Chip x clears one branch; the trigger
+ * footer holds a "Tozalash" link when anything is selected.
+ *
+ * Behavior:
+ *   - Click trigger → toggles a dropdown panel with the full branch list.
+ *   - Each row toggles its branch in the value array.
+ *   - Outside-click closes the panel.
+ */
+function BranchMultiSelect({
+  value,
+  onChange,
+}: {
+  value: string[];
+  onChange: (next: string[]) => void;
+}): JSX.Element {
+  const { data: branches = [] } = useBranches();
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+
+  // Outside-click close. Listens at the document so any click outside the
+  // wrapper collapses the panel — minimal version of a Popover primitive
+  // tailored to this single use site.
+  useEffect(() => {
+    if (!open) return;
+    function onDocClick(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+
+  const selectedSet = new Set(value);
+  const selectedBranches = branches.filter((b) => selectedSet.has(b.id));
+
+  function toggle(id: string) {
+    onChange(selectedSet.has(id) ? value.filter((v) => v !== id) : [...value, id]);
+  }
+
+  return (
+    <div ref={wrapperRef} className="relative w-56">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          "inline-flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-2.5 text-sm shadow-xs transition-colors",
+          "hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+        )}
+      >
+        <span className="inline-flex items-center gap-2 truncate text-foreground">
+          <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+          {selectedBranches.length === 0 ? (
+            <span className="text-muted-foreground">Hammasi</span>
+          ) : selectedBranches.length === 1 ? (
+            <span className="truncate">{selectedBranches[0].name}</span>
+          ) : (
+            <span className="tabular-nums">{selectedBranches.length} ta tanlangan</span>
+          )}
+        </span>
+        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+      </button>
+
+      {/* Selected chips — rendered beneath the trigger so the operator can
+          remove items without re-opening the panel. */}
+      {selectedBranches.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {selectedBranches.map((b) => (
+            <span
+              key={b.id}
+              className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-px text-2xs font-medium text-primary"
+            >
+              {b.name}
+              <button
+                type="button"
+                onClick={() => toggle(b.id)}
+                aria-label={`${b.name} filiali tanlovini olib tashlash`}
+                className="-mr-1 inline-flex h-4 w-4 items-center justify-center rounded-full hover:bg-primary/20"
+              >
+                <X className="h-2.5 w-2.5" />
+              </button>
+            </span>
+          ))}
+          <button
+            type="button"
+            onClick={() => onChange([])}
+            className="text-2xs font-medium text-muted-foreground hover:text-foreground hover:underline"
+          >
+            Tozalash
+          </button>
+        </div>
+      )}
+
+      {open && (
+        <div className="absolute z-30 mt-1.5 w-72 overflow-hidden rounded-md border bg-card shadow-overlay">
+          {branches.length === 0 ? (
+            <p className="px-3 py-3 text-xs text-muted-foreground">Filiallar yo'q.</p>
+          ) : (
+            <ul className="max-h-64 overflow-y-auto py-1">
+              {branches.map((b) => {
+                const checked = selectedSet.has(b.id);
+                return (
+                  <li key={b.id}>
+                    <button
+                      type="button"
+                      onClick={() => toggle(b.id)}
+                      className={cn(
+                        "flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors",
+                        "hover:bg-surface",
+                        checked && "text-foreground",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "inline-flex h-4 w-4 items-center justify-center rounded border",
+                          checked
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-input bg-background",
+                        )}
+                      >
+                        {checked && <Check className="h-3 w-3" />}
+                      </span>
+                      <span className="truncate">{b.name}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

@@ -2,9 +2,30 @@
 
 ## Holat
 - **Asosiy 11 milestone + Settings + Call-fixes + Integration-runtime + Operator-extension tugatildi** 🎉
-- Joriy ish: **Card detail / Calls / Scorecard redesign**
+- Joriy ish: **Kanban drag fix + multi-branch filter**
 - Status: **done**
 - Repo: https://github.com/acousticuz/crm
+
+## Kanban drag fix + multi-branch filter (2026-06-03)
+- [x] **DragOverlay portal**: `KanbanPage` ga `@dnd-kit/core` `DragOverlay` import qilindi; `onDragStart` paytida aktiv karta `activeCard` state'iga yoziladi; `<DragOverlay dropAnimation={null}>` orqali aktiv karta portal sifatida (DOM tree'dan tashqarida) chiqariladi — ustun `overflow-y-auto` chiziqlari bilan kesilmaydi. Visual: rotate-1 + cursor-grabbing + pointer-events-none.
+- [x] **Placeholder source column'da**: `KanbanCard` ga `placeholder?: boolean` propi; placeholder paytida border-dashed, transparent bg, shadow-none, opacity 0.4. `KanbanColumn` `activeCardId` propini olib `placeholder={c.id === activeCardId}` uzatadi. Tushiruvchi karta source ustunida tartibni saqlaydi.
+- [x] **Drop behavior, stage logic, ordering, Socket.io o'zgarmadi**: `onDragEnd` mantig'i bir xil — `moveCard.mutate({ cardId, stageId })`; `justDraggedRef` click-suppression bir xil; `onDragCancel` faqat aktiv kartani tozalaydi.
+
+### Multi-select branch filter
+- [x] **Backend `FindCardsDto`**: yangi `branchIds?: string[]`, `@Transform`(array yoki single → array). Eski `branchId` back-compat uchun qoldi.
+- [x] **Backend `cards.service.list`**: `branchIds.length > 0` bo'lsa `where.branchId = { in: branchIds }`, aks holda eski `branchId === single` (precedence: multi > single).
+- [x] **Frontend `CardFilters`** typeda `branchIds?: string[]`; `useCards` axios `paramsSerializer: { indexes: null }` bilan `branchIds=a&branchIds=b` yuboradi.
+- [x] **`KanbanFilters` da yangi `BranchMultiSelect`**: Building2 ikona + trigger button (Hammasi / "X ta tanlangan" / bitta nom); ochilgan panelda filiallar ro'yxati (check ikona + tinted-primary checked square); outside-click bilan yopiladi. Selected branches removable chips trigger ostida; har chipda X tugma, oxirida "Tozalash" link. Eski "Filial ID" Input olib tashlandi.
+- [x] **`activeCount` array'larni `length > 0` bilan tekshiradi** — `branchIds=[]` bo'sh array Tozalash count'ga kirmaydi.
+
+### Test
+- [x] **`kanban.spec.ts`** yangi test: 3 ta branch + 3 ta card; `cards.list({ branchIds: [a, b] })` ikkita branchdagi cardlarni qaytaradi, uchinchisini emas; single-element array ham ishlaydi. Backend 117 → **118 test**.
+
+### Verifikatsiya
+- `pnpm build` — 5 paket xatosiz.
+- `pnpm test` — backend **118/118**.
+- `pnpm lint` — 0 xato.
+- commit `fix(kanban): drag overlay + multi-select branch filter` + push.
 
 ## Card panel + Calls + Scorecard redesign (2026-06-03)
 - [x] **`CallsPage`**: page heading + count, list ichki `card-surface` (border + shadow-xs); har qator `hover:bg-surface/60`, semantic-tinted direction icon (success/info/destructive), `StatusPill` (Javobsiz/Band/Xato), kontakt warning rangi (Noma'lum), inline rename inset-surface, action cluster (Kontakt, Qo'ng'iroq sip:, Karta link, "Tahlil" primary chip with Sparkles ikona).

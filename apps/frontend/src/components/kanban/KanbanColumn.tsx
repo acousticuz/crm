@@ -9,6 +9,10 @@ interface Props {
   stage: Stage;
   cards: CardListItem[];
   onOpenCard: (cardId: string) => void;
+  // When set, this card is the one currently being dragged through the
+  // DragOverlay portal — render it as a dimmed placeholder in its source
+  // column so the layout doesn't shift during the drag.
+  activeCardId?: string | null;
 }
 
 function formatSum(n: number): string {
@@ -27,7 +31,7 @@ function formatSum(n: number): string {
  *  - Collapsed columns shrink to a 56px rail so the board can hold more
  *    pipeline stages without horizontal-scroll fatigue.
  */
-export function KanbanColumn({ stage, cards, onOpenCard }: Props): JSX.Element {
+export function KanbanColumn({ stage, cards, onOpenCard, activeCardId }: Props): JSX.Element {
   const { isOver, setNodeRef } = useDroppable({
     id: stage.id,
     data: { type: "stage", stage },
@@ -129,7 +133,12 @@ export function KanbanColumn({ stage, cards, onOpenCard }: Props): JSX.Element {
         ) : (
           <>
             {cards.map((c) => (
-              <KanbanCard key={c.id} card={c} onOpen={onOpenCard} />
+              <KanbanCard
+                key={c.id}
+                card={c}
+                onOpen={onOpenCard}
+                placeholder={c.id === activeCardId}
+              />
             ))}
             {cards.length === 0 && (
               <div className="my-auto rounded-md border border-dashed border-border/70 px-3 py-5 text-center text-xs text-muted-foreground">

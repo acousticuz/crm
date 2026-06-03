@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
+  DragOverlay,
   PointerSensor,
   type DragEndEvent,
+  type DragStartEvent,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
+import { KanbanCard } from "@/components/kanban/KanbanCard";
 import { KanbanColumn } from "@/components/kanban/KanbanColumn";
 import { KanbanFilters } from "@/components/kanban/KanbanFilters";
 import { CardDetailSheet } from "@/components/kanban/CardDetailSheet";
@@ -49,6 +52,10 @@ export function KanbanPage(): JSX.Element {
   // Set while a drag is in progress so the post-drop click doesn't pop the
   // detail sheet open.
   const justDraggedRef = useRef(false);
+  // Active card during drag — rendered through DragOverlay (portal) so it
+  // floats above every column and never gets clipped by a column's
+  // overflow:auto. The card in the source column becomes a placeholder.
+  const [activeCard, setActiveCard] = useState<CardListItem | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   const cardsByStage = useMemo(() => {
@@ -60,7 +67,14 @@ export function KanbanPage(): JSX.Element {
     return grouped;
   }, [cardsPage]);
 
+  function onDragStart(event: DragStartEvent) {
+    justDraggedRef.current = true;
+    const card = event.active.data.current?.card as CardListItem | undefined;
+    setActiveCard(card ?? null);
+  }
+
   function onDragEnd(event: DragEndEvent) {
+    setActiveCard(null);
     // Suppress the synthetic click that follows a drop for a moment.
     setTimeout(() => {
       justDraggedRef.current = false;
@@ -72,6 +86,10 @@ export function KanbanPage(): JSX.Element {
     if (!card) return;
     if (card.stageId === stageId) return;
     moveCard.mutate({ cardId: card.id, stageId });
+  }
+
+  function onDragCancel() {
+    setActiveCard(null);
   }
 
   function openCard(cardId: string) {
@@ -122,10 +140,9 @@ export function KanbanPage(): JSX.Element {
 
       <DndContext
         sensors={sensors}
-        onDragStart={() => {
-          justDraggedRef.current = true;
-        }}
+        onDragStart={onDragStart}
         onDragEnd={onDragEnd}
+        onDragCancel={onDragCancel}
       >
         {/* Horizontal scroll container — subtle gradient mask edges so the
             user feels the column rail can scroll without a visible scrollbar
@@ -137,9 +154,22 @@ export function KanbanPage(): JSX.Element {
               stage={stage}
               cards={cardsByStage.get(stage.id) ?? []}
               onOpenCard={openCard}
+              activeCardId={activeCard?.id ?? null}
             />
           ))}
         </div>
+
+        {/* DragOverlay — portaled clone of the active card. Rendered
+            outside any column so it can never be clipped by a column's
+            overflow:auto. Visual offset / rotation gives the card a clear
+            "lifted" feel during drag. */}
+        <DragOverlay dropAnimation={null}>
+          {activeCard ? (
+            <div className="pointer-events-none rotate-1 cursor-grabbing">
+              <KanbanCard card={activeCard} onOpen={() => undefined} />
+            </div>
+          ) : null}
+        </DragOverlay>
       </DndContext>
 
       <CardDetailSheet cardId={openCardId} onClose={() => setOpenCardId(null)} />

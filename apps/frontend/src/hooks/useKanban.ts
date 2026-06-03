@@ -15,7 +15,10 @@ export interface CardFilters {
   pipelineId?: string;
   tagId?: string;
   responsibleUserId?: string;
+  // Single branch (legacy single-select; kept for back-compat with deep links
+  // and the calls-page hook). The Kanban filter bar uses branchIds[] instead.
   branchId?: string;
+  branchIds?: string[];
   source?: string;
   missedOnly?: boolean;
   dateFrom?: string;
@@ -34,7 +37,14 @@ export function useCards(filters: CardFilters) {
   return useQuery<PageResult<CardListItem>>({
     queryKey: ["cards", filters],
     queryFn: async () =>
-      (await api.get<PageResult<CardListItem>>("/cards", { params: { ...filters, pageSize: 200 } })).data,
+      (
+        await api.get<PageResult<CardListItem>>("/cards", {
+          params: { ...filters, pageSize: 200 },
+          // Axios default serializes arrays as `branchIds[]=a&branchIds[]=b`.
+          // The Nest DTO Transform accepts that out of the box.
+          paramsSerializer: { indexes: null },
+        })
+      ).data,
     enabled: !!filters.pipelineId,
   });
 }

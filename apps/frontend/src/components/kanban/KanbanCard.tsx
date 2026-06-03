@@ -9,6 +9,10 @@ import type { CardListItem } from "@/lib/types";
 interface Props {
   card: CardListItem;
   onOpen: (cardId: string) => void;
+  // True when this card is being dragged through the DragOverlay portal;
+  // the source-column instance becomes a dimmed placeholder so the column
+  // layout stays stable.
+  placeholder?: boolean;
 }
 
 /**
@@ -19,17 +23,20 @@ interface Props {
  * Hierarchy: title row (customer + missed-call pill) → contact + phone →
  * compact meta (last-SMS, due, branch) → tags → responsible.
  */
-export function KanbanCard({ card, onOpen }: Props): JSX.Element {
+export function KanbanCard({ card, onOpen, placeholder }: Props): JSX.Element {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: card.id,
     data: { type: "card", card },
   });
-  const style: React.CSSProperties = {
-    transform: CSS.Translate.toString(transform),
-    // Lifted card during drag — slight scale + stronger shadow, lower opacity
-    // so the drop target underneath stays visible.
-    opacity: isDragging ? 0.85 : 1,
-  };
+  // While a card is being dragged through DragOverlay, its source-column
+  // copy renders as a quiet placeholder — no translate, no shadow change,
+  // just a dimmed outline so the column layout stays put.
+  const style: React.CSSProperties = placeholder
+    ? { opacity: 0.4, pointerEvents: "none" }
+    : {
+        transform: CSS.Translate.toString(transform),
+        opacity: isDragging ? 0 : 1,
+      };
   const dueOverdue = card.dueDate && new Date(card.dueDate) < new Date();
   const phone = card.contact?.phones?.[0];
   const lastSmsAt = card.lastSms ? new Date(card.lastSms.sentAt ?? card.lastSms.createdAt) : null;
@@ -59,7 +66,10 @@ export function KanbanCard({ card, onOpen }: Props): JSX.Element {
         "transition-all duration-150 ease-out",
         "hover:-translate-y-px hover:border-border hover:shadow-md",
         "active:cursor-grabbing",
-        isDragging && "ring-2 ring-primary/40 shadow-overlay",
+        // Dashed border + no hover lift when this card is a placeholder
+        // (the real one is floating in DragOverlay).
+        placeholder && "border-dashed bg-transparent shadow-none hover:translate-y-0 hover:shadow-none",
+        isDragging && !placeholder && "ring-2 ring-primary/40 shadow-overlay",
       )}
     >
       {/* Title + status pill. Title is the primary anchor; the pill is the

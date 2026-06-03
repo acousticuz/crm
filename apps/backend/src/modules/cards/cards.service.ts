@@ -96,7 +96,14 @@ export class CardsService {
     if (query.pipelineId) where.pipelineId = query.pipelineId;
     if (query.stageId) where.stageId = query.stageId;
     if (query.responsibleUserId) where.responsibleUserId = query.responsibleUserId;
-    if (query.branchId) where.branchId = query.branchId;
+    // Two filter shapes: single branchId (legacy / single-select) OR
+    // branchIds array (multi-select from the new Kanban filter bar). Array
+    // wins when both are present so multi-select takes precedence.
+    if (query.branchIds && query.branchIds.length > 0) {
+      where.branchId = { in: query.branchIds };
+    } else if (query.branchId) {
+      where.branchId = query.branchId;
+    }
     if (query.tagId) where.cardTags = { some: { tagId: query.tagId } };
     if (query.source) where.contact = { source: query.source };
     // "Missed only" — cards that have at least one MISSED call.
