@@ -2,6 +2,7 @@ import { Link, NavLink, Outlet } from "react-router-dom";
 import { LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { IncomingCallToast } from "@/components/IncomingCallToast";
+import { SalesScriptPanel } from "@/components/SalesScriptPanel";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 
@@ -41,6 +42,7 @@ export function AppLayout(): JSX.Element {
             </nav>
           </div>
           <div className="flex items-center gap-3 text-sm">
+            <SalesScriptPanel />
             {user && (
               <span className="text-muted-foreground">
                 {user.email} · <span className="text-xs">{user.role}</span>

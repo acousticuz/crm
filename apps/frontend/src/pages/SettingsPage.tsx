@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { PipelineEditor } from "@/components/settings/PipelineEditor";
 import { UsersManager } from "@/components/settings/UsersManager";
+import { ScriptEditor } from "@/components/settings/ScriptEditor";
 import {
   useDisconnectIntegration,
   useIntegrations,
@@ -80,17 +81,30 @@ const TITLES: Record<IntegrationType, string> = {
   INBOX: "Omnichannel inbox (IG/FB)",
 };
 
-type SettingsTab = "integrations" | "pipelines" | "users";
+type SettingsTab = "integrations" | "pipelines" | "users" | "script";
 
 export function SettingsPage(): JSX.Element {
   const { user } = useAuth();
   const isTenantAdmin = user?.role === "TENANT_ADMIN";
-  const [tab, setTab] = useState<SettingsTab>("integrations");
+  const isSupervisor = user?.role === "SUPERVISOR";
+  // SUPERVISOR can land here just to edit the call script — admin-only tabs
+  // (integrations / users / pipelines) stay hidden for them.
+  const tabs = (isTenantAdmin
+    ? [
+        { id: "integrations" as const, label: "Integratsiyalar" },
+        { id: "pipelines" as const, label: "Voronkalar (Kanban)" },
+        { id: "users" as const, label: "Xodimlar" },
+        { id: "script" as const, label: "Sotuv skripti" },
+      ]
+    : isSupervisor
+      ? [{ id: "script" as const, label: "Sotuv skripti" }]
+      : []);
+  const [tab, setTab] = useState<SettingsTab>(tabs[0]?.id ?? "script");
 
-  if (!isTenantAdmin) {
+  if (!isTenantAdmin && !isSupervisor) {
     return (
       <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">
-        Sozlamalarga faqat <strong>kompaniya administratori (TENANT_ADMIN)</strong> kira oladi.
+        Sozlamalarga faqat <strong>kompaniya administratori</strong> yoki <strong>supervayzer</strong> kira oladi.
       </div>
     );
   }
@@ -99,11 +113,7 @@ export function SettingsPage(): JSX.Element {
     <div className="space-y-5">
       <h1 className="text-2xl font-semibold">Sozlamalar</h1>
       <div className="flex gap-2 border-b">
-        {([
-          { id: "integrations", label: "Integratsiyalar" },
-          { id: "pipelines", label: "Voronkalar (Kanban)" },
-          { id: "users", label: "Xodimlar" },
-        ] as Array<{ id: SettingsTab; label: string }>).map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
@@ -121,6 +131,8 @@ export function SettingsPage(): JSX.Element {
         <PipelineEditor />
       ) : tab === "users" ? (
         <UsersManager />
+      ) : tab === "script" ? (
+        <ScriptEditor />
       ) : (
         <IntegrationsTab />
       )}

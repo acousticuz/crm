@@ -100,6 +100,118 @@ const QA_SCRIPT = {
   ],
 };
 
+// Operator-facing sales script — shown in the top app bar so operators can
+// follow each step during the call. Sections are also the QA criteria, so
+// supervisor scoring stays anchored to the same wording the operators see.
+// Total maxScore = 100.
+const SALES_SCRIPT = {
+  name: "Sotuv skripti (Acoustic eshitish apparatlari)",
+  sections: [
+    "Salomlashish va tanishtirish",
+    "Ehtiyojni aniqlash",
+    "Bepul eshitish tekshiruvini taklif qilish",
+    "Mahsulot/xizmat haqida ma'lumot",
+    "E'tiroz bilan ishlash",
+    "Keyingi qadamni belgilash",
+    "Xayrlashish",
+  ],
+  criteria: [
+    {
+      id: "salomlashish",
+      section: "Salomlashish va tanishtirish",
+      text:
+        "Operator o'zini va Acoustic eshitish markazini tanishtiradi, mijozning ismini so'raydi.",
+      maxScore: 10,
+      keywords: ["assalomu alaykum", "acoustic", "ismingiz", "tanishtiraman"],
+      guidance: [
+        "\"Assalomu alaykum, men Acoustic eshitish markazidan {operator_ismi}.\"",
+        "\"Iltimos, sizning ismingizni bilsam bo'ladimi?\"",
+        "Sokin, do'stona ohang. Mijoz ismini eslab qoling va davomida ishlatib turing.",
+      ],
+    },
+    {
+      id: "ehtiyojni-aniqlash",
+      section: "Ehtiyojni aniqlash",
+      text:
+        "Eshitish muammosi qachondan beri, qaysi vaziyatlarda qiynaladi, avval tekshiruvdan o'tganmi — ochiq savollar bilan aniqlanadi.",
+      maxScore: 20,
+      keywords: ["qachondan", "qiyin", "tekshiruv", "qaysi vaziyat"],
+      guidance: [
+        "Ochiq savollar bering: \"Qachondan beri eshitishda muammo sezayotgansiz?\"",
+        "\"Qaysi vaziyatlarda ko'proq qiynalasiz — gaplashganda, televizor ko'rganda, yig'ilishlarda?\"",
+        "\"Avval qayerdadir audiometriyadan o'tganmisiz? Apparatdan foydalanganmisiz?\"",
+        "Mijozning gapini bo'lmasdan tinglang, kalit so'zlarni yozib oling.",
+      ],
+    },
+    {
+      id: "bepul-tekshiruv",
+      section: "Bepul eshitish tekshiruvini taklif qilish",
+      text:
+        "Mijozga yaqin filialdagi bepul audiometriya tekshiruvini taklif qiling — aniq manzil va vaqt aytib.",
+      maxScore: 15,
+      keywords: ["bepul tekshiruv", "audiometriya", "filial", "tashrif"],
+      guidance: [
+        "\"Sizga yaqin filialimizda audiometriya tekshiruvi BEPUL — bu bizning yangi mijozlarga taklifimiz.\"",
+        "Yaqin filialni ayting (manzil + ish vaqti). Masalan: \"Chilonzor filialimiz, Bunyodkor 12, har kuni 9:00–18:00.\"",
+        "Aniq vaqt taklif qiling: \"Ertaga soat 11:00 ga yozaman, sizga qulaymi?\"",
+      ],
+    },
+    {
+      id: "mahsulot-malumoti",
+      section: "Mahsulot/xizmat haqida ma'lumot",
+      text:
+        "Apparat turlari, afzalliklari va mijoz ehtiyojiga moslab qisqacha tushuntiriladi.",
+      maxScore: 20,
+      keywords: ["apparat", "model", "afzallik", "ehtiyoj"],
+      guidance: [
+        "Mijoz ehtiyojiga MOS apparat turini ko'rsating (quloq ichi/orqasi, raqamli, akkumulyatorli).",
+        "2-3 ta asosiy afzallikni ayting: shovqinni filtirlash, ko'rinmas dizayn, smartfon bilan ulanish.",
+        "Texnik jargon ishlatmang; oddiy tilda tushuntiring.",
+        "Mahsulot narxi haqida hozir aniq raqam BERMASDAN, filialda tekshiruvdan keyin tanlash haqida ayting.",
+      ],
+    },
+    {
+      id: "etiroz",
+      section: "E'tiroz bilan ishlash",
+      text:
+        "\"Narxi qimmat\", \"O'ylab ko'raman\", \"Ishonmayman\" e'tirozlariga to'g'ri va xushmuomalalik bilan javob beriladi.",
+      maxScore: 15,
+      keywords: ["narx", "ishonch", "o'ylab", "kafolat"],
+      guidance: [
+        "\"Qimmat\" → \"Tushunaman. Lekin apparatimiz 2 yil kafolatli va imkoniyatlar moslamasi bor.\"",
+        "\"O'ylab ko'raman\" → \"Albatta. Bepul tekshiruvga yozilib qo'ying, qaror keyin qabul qilasiz.\"",
+        "\"Ishonmayman\" → \"Mingdan ortiq mijozimiz bor. Filial tashrifi paytida ko'rsatamiz.\"",
+        "Bahslashmang, mijozni eshiting va xulosa qiling.",
+      ],
+    },
+    {
+      id: "keyingi-qadam",
+      section: "Keyingi qadamni belgilash",
+      text:
+        "Aniq sana/vaqtga tekshiruv yoki tashrif belgilang; qayta aloqa qilishni va'da qiling.",
+      maxScore: 15,
+      keywords: ["yozdim", "kelishuv", "qayta aloqa", "sms"],
+      guidance: [
+        "Aniq vaqt va sana yozib oling: \"Sizga 5-iyun, soat 11:00 ga yozib qo'ydim.\"",
+        "Mijoz raqamiga SMS tasdiqlovi yuborilishini ayting.",
+        "Tashrifgacha telefonda eslatma qilinishini ayting.",
+      ],
+    },
+    {
+      id: "xayrlashish",
+      section: "Xayrlashish",
+      text: "Suhbatni samimiy, professional xulosa va minnatdorlik bilan yakunlang.",
+      maxScore: 5,
+      keywords: ["rahmat", "xayrli kun", "ko'rishguncha"],
+      guidance: [
+        "\"Vaqtingiz uchun rahmat, {mijoz_ismi}.\"",
+        "\"Sizni filialimizda kutamiz. Xayrli kun!\"",
+        "Telefon mijoz tomondan uzilishini kutib turing.",
+      ],
+    },
+  ],
+};
+
 const USERS = [
   { role: "TENANT_ADMIN", email: "admin@acoustic.uz", fullName: "Acoustic Administrator", branchIdx: null },
   { role: "SUPERVISOR", email: "supervisor@acoustic.uz", fullName: "Bosh Supervayzer", branchIdx: 0 },
@@ -175,23 +287,35 @@ async function main() {
     }
     console.log(`Tags: ${TAGS.length}`);
 
-    // QA Script.
-    let script = await prisma.script.findFirst({
-      where: { tenantId: tenant.id, name: QA_SCRIPT.name },
-    });
-    if (!script) {
-      script = await prisma.script.create({
-        data: {
-          tenantId: tenant.id,
-          name: QA_SCRIPT.name,
-          sections: QA_SCRIPT.sections,
-          criteria: QA_SCRIPT.criteria,
-          isActive: true,
-        },
+    // QA Scripts — both the original "Acoustic standart" and the new
+    // hearing-aid sales script, idempotent on (tenantId, name). Operator
+    // workspace surfaces the first active script alphabetically; rename or
+    // toggle isActive to switch the primary.
+    for (const def of [QA_SCRIPT, SALES_SCRIPT]) {
+      const existing = await prisma.script.findFirst({
+        where: { tenantId: tenant.id, name: def.name },
       });
-      console.log(`Script ${script.id} created with ${QA_SCRIPT.criteria.length} criteria`);
-    } else {
-      console.log(`Script already exists: ${script.id}`);
+      if (!existing) {
+        const created = await prisma.script.create({
+          data: {
+            tenantId: tenant.id,
+            name: def.name,
+            sections: def.sections,
+            criteria: def.criteria,
+            isActive: true,
+          },
+        });
+        console.log(`Script "${def.name}" created (${created.id}) with ${def.criteria.length} criteria`);
+      } else {
+        // Refresh sections/criteria on re-seed so updates to the wording in
+        // this file propagate without manual DB surgery. Don't touch isActive
+        // — admins control that.
+        await prisma.script.update({
+          where: { id: existing.id },
+          data: { sections: def.sections, criteria: def.criteria },
+        });
+        console.log(`Script "${def.name}" refreshed (${existing.id})`);
+      }
     }
 
     // Users.
@@ -222,7 +346,22 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error("seed-acoustic failed:", err);
-  process.exit(1);
-});
+// Export the constants so tests can introspect the seeded shape without
+// hitting the DB. Guard the entrypoint so `require()`-ing this file from a
+// spec doesn't kick off a real seed.
+module.exports = {
+  TENANT_NAME,
+  BRANCHES,
+  TAGS,
+  PIPELINE,
+  QA_SCRIPT,
+  SALES_SCRIPT,
+  USERS,
+};
+
+if (require.main === module) {
+  main().catch((err) => {
+    console.error("seed-acoustic failed:", err);
+    process.exit(1);
+  });
+}

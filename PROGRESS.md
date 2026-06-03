@@ -2,9 +2,23 @@
 
 ## Holat
 - **Asosiy 11 milestone + Settings + Call-fixes + Integration-runtime + Operator-extension tugatildi** 🎉
-- Joriy ish: **Eskiz template sync + template-only SMS yuborish**
+- Joriy ish: **Sotuv skripti (eshitish apparatlari) — yuqori panel + tahrirlash + QA bog'lash**
 - Status: **done**
 - Repo: https://github.com/acousticuz/crm
+
+## Sotuv skripti — eshitish apparatlari (2026-06-03)
+- [x] **Seed**: `apps/backend/scripts/seed-acoustic.js` ga `SALES_SCRIPT` qo'shildi — 7 bo'lim (Salomlashish 10 + Ehtiyojni aniqlash 20 + Bepul tekshiruv 15 + Mahsulot 20 + E'tiroz 15 + Keyingi qadam 15 + Xayrlashish 5 = **100 ball**). Idempotent upsert; har mezonga `text` + `maxScore` + `keywords` + `guidance[]` (operator uchun aytiladigan jumlalar). Re-seed har safar sections/criteria yangilaydi (admin'ning `isActive`'iga tegmaydi). Acoustic tenant'ga deploy qilindi (`Sotuv skripti (Acoustic eshitish apparatlari)` script id `cmpxgdluw0001pxehtg9n2ueu`).
+- [x] **Yuqori paneldagi "Sotuv skripti" tugmasi**: `SalesScriptPanel.tsx` — `AppLayout` header'iga tugma; bosilganda o'ng tomondan slide-over ochiladi. Backdrop `bg-black/10` (yarim shaffof) — operator qo'ng'iroq oynasidan chiqib ketmaydi. Bo'limlar collapse/expand, har biri ball + mezon matni + `guidance` o'q nuqtalari + kalit so'z chip'lari. Qo'ng'iroq paytida ko'rib turish uchun moslashtirilgan.
+- [x] **`useScripts` + `useActiveScript` hook**: `apps/frontend/src/hooks/useScripts.ts` — `GET /qa/scripts` (operator ham ko'radi). Active script = ilk `isActive=true`, alphabetically — seed nomi shuni birinchi qiladi.
+- [x] **Settings → "Sotuv skripti" tab**: `ScriptEditor.tsx` — chap tomonda skript ro'yxati, o'ng tomonda forma: nom, isActive, bo'limlar (qo'sh/o'chir), mezonlar (matn + bo'lim + ball + `guidance` + keywords). RBAC: SUPERVISOR + TENANT_ADMIN. SettingsPage SUPERVISOR'ga ham ochiq, lekin admin-only tab'lar yashirin.
+- [x] **HTTP RBAC test**: `apps/backend/test/qa-scripts-http.spec.ts` — supertest + real `RolesGuard` (APP_GUARD), JwtAuthGuard override + ClsModule middleware tenant context. 4 ta test: operator GET 200, operator PATCH 403, supervisor PATCH 200, admin PATCH 200.
+
+### Verifikatsiya
+- `pnpm build` — 5 paket xatosiz.
+- `pnpm test` — backend yashil (yangi `qa-scripts-http.spec.ts`).
+- `pnpm lint` — 0 xato.
+- pm2 reload `acoustic-backend`.
+- commit `feat(script): hearing-aid sales script, prominent display, editable` + push.
 
 ## SMS — Eskiz template-only rejim (2026-06-02)
 - [x] **Adapter `fetchTemplates`**: `EskizSmsAdapter.fetchTemplates()` Eskiz `/user/templates`'dan tasdiqlangan template'larni oladi. Token muddati o'tgan bo'lsa avto-refresh. Parser ham `data[]` ham `data.result[]` shakllarni tushunadi.
