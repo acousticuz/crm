@@ -43,6 +43,13 @@ export class WriteAnalysisDto {
   @IsString({ each: true })
   suggestedTags?: string[];
 
+  // LLM-extracted operator deviations from the active sales script. Each item:
+  // { section, severity ("low"|"medium"|"high"), message, evidence? }.
+  // Object-array — stored as JSONB; not nested-validated to stay permissive.
+  @IsOptional()
+  @IsArray()
+  mistakes?: Array<Record<string, unknown>>;
+
   @IsOptional()
   @IsString()
   scriptId?: string;

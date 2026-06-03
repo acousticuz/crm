@@ -1,11 +1,15 @@
 import type {
+  AnalysisMistake,
   AnalysisResult,
   CriterionGrade,
   LlmAdapter,
   QaResult,
+  ScriptContext,
   ScriptCriterion,
   TranscriptForLlm,
 } from "./llm-adapter";
+
+const SEVERITIES = ["low", "medium", "high"] as const;
 
 interface AnthropicResponse {
   content?: Array<{ text?: string }>;
@@ -56,16 +60,30 @@ export class ClaudeLlmAdapter implements LlmAdapter {
     return json.content?.[0]?.text ?? "";
   }
 
-  async analyze(t: TranscriptForLlm): Promise<AnalysisResult> {
+  async analyze(t: TranscriptForLlm, script?: ScriptContext): Promise<AnalysisResult> {
     const system =
       "Siz call-markaz suhbatlarini tahlil qiluvchi yordamchisiz. FAQAT JSON qaytaring, " +
       "boshqa hech qanday matn yozmang.";
+    // When a sales script is provided, ask for the mistakes list too — the
+    // grader is anchored to the same script so the supervisor sees both
+    // sources of truth pointing at the same wording.
+    const scriptBlock = script
+      ? `\n\nFaol sotuv skripti "${script.name}" bo'limlari va talablari:\n` +
+        script.criteria
+          .map((c, i) => `${i + 1}. ${c.section} — ${c.text} (${c.maxScore} ball)`)
+          .join("\n") +
+        `\n\nJSON ichidagi "mistakes" — operator skriptdan og'ishgan har bir holat:` +
+        ` [{"section":"bo'lim nomi","severity":"low|medium|high",` +
+        `"message":"nima xato bo'ldi (o'zbekcha, qisqa)","evidence":"transkriptdan iqtibos yoki 'topilmadi'"}].`
+      : `\n\nFaol skript yo'q — "mistakes" ni bo'sh qator [] qilib qaytaring.`;
     const user =
       `Quyidagi qo'ng'iroq transkripti (o'zbek yoki rus tilida) bo'yicha shu JSON formatda javob bering:\n` +
       `{"sentiment":"positive|neutral|negative|mixed","topic":"qisqa mavzu","summary":"qisqa xulosa (o'zbekcha)",` +
       `"nextStep":"operator uchun keyingi qadam tavsiyasi (o'zbekcha)","keyPoints":["asosiy nuqtalar"],` +
-      `"suggestedTags":["mos teglar"]}\n\nTranskript:\n${t.text}`;
-    const out = await this.call(system, user, 1024);
+      `"suggestedTags":["mos teglar"],"mistakes":[...]}` +
+      scriptBlock +
+      `\n\nTranskript:\n${t.text}`;
+    const out = await this.call(system, user, 1536);
     const j = extractJson(out);
     const sentiment = SENTIMENTS.includes(j.sentiment as (typeof SENTIMENTS)[number])
       ? (j.sentiment as AnalysisResult["sentiment"])
@@ -77,6 +95,7 @@ export class ClaudeLlmAdapter implements LlmAdapter {
       nextStep: String(j.nextStep ?? ""),
       keyPoints: Array.isArray(j.keyPoints) ? j.keyPoints.map(String) : [],
       suggestedTags: Array.isArray(j.suggestedTags) ? j.suggestedTags.map(String) : [],
+      mistakes: parseMistakes(j.mistakes),
     };
   }
 
@@ -112,4 +131,28 @@ export class ClaudeLlmAdapter implements LlmAdapter {
     const maxScore = criteria.reduce((a, c) => a + c.maxScore, 0);
     return { totalScore, maxScore, criteriaResults };
   }
+}
+
+// LLMs sometimes return single objects or stringified arrays for "mistakes".
+// Normalize defensively so the DB shape stays valid even on flaky responses.
+function parseMistakes(raw: unknown): AnalysisMistake[] {
+  if (!Array.isArray(raw)) return [];
+  const out: AnalysisMistake[] = [];
+  for (const m of raw) {
+    if (!m || typeof m !== "object") continue;
+    const obj = m as Record<string, unknown>;
+    const section = typeof obj.section === "string" ? obj.section : "";
+    const message = typeof obj.message === "string" ? obj.message : "";
+    if (!section || !message) continue;
+    const sev = SEVERITIES.includes(obj.severity as (typeof SEVERITIES)[number])
+      ? (obj.severity as AnalysisMistake["severity"])
+      : "medium";
+    out.push({
+      section,
+      severity: sev,
+      message,
+      evidence: typeof obj.evidence === "string" ? obj.evidence : undefined,
+    });
+  }
+  return out;
 }

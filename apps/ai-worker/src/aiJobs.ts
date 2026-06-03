@@ -1,10 +1,19 @@
 import type { LlmAdapter } from "./llm/llm-adapter";
-import type { ScriptCriterion, TranscriptForLlm } from "./llm/llm-adapter";
+import type {
+  AnalysisMistake,
+  ScriptContext,
+  ScriptCriterion,
+  TranscriptForLlm,
+} from "./llm/llm-adapter";
 
 export interface AnalysisJobData {
   tenantId: string;
   callId: string;
   transcript: TranscriptForLlm;
+  // Optional: when the tenant has an active sales script, ai-worker passes
+  // it through so the LLM grades against the same wording the operator sees
+  // in the top "Sotuv skripti" panel — and produces the mistakes list.
+  script?: ScriptContext;
 }
 
 export interface QaJobData {
@@ -25,6 +34,8 @@ export interface BackendApiForAi {
     nextStep: string;
     keyPoints: string[];
     suggestedTags: string[];
+    mistakes: AnalysisMistake[];
+    scriptId?: string;
   }): Promise<void>;
   writeQAScore(body: {
     tenantId: string;
@@ -50,7 +61,7 @@ export async function runAnalysisJob(
   data: AnalysisJobData,
   deps: { llm: LlmAdapter; backend: BackendApiForAi },
 ): Promise<void> {
-  const result = await deps.llm.analyze(data.transcript);
+  const result = await deps.llm.analyze(data.transcript, data.script);
   await deps.backend.writeAnalysis({
     tenantId: data.tenantId,
     callId: data.callId,

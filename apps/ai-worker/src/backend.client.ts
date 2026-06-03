@@ -31,6 +31,8 @@ export class BackendClient implements BackendApiForAi {
   async writeAnalysis(body: Parameters<BackendApiForAi["writeAnalysis"]>[0]): Promise<void> {
     await this.http.post("/analyses", body);
   }
+  // (Same path serves writeAnalysis with `mistakes` — backend DTO accepts the
+  // extended shape; older deployments without the field just drop it.)
 
   async writeQAScore(body: Parameters<BackendApiForAi["writeQAScore"]>[0]): Promise<void> {
     await this.http.post("/qa-scores", body);

@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import {
+  useAnalyzeCall,
   useAttachTag,
   useCardDetail,
   useCreateNote,
@@ -427,8 +428,34 @@ function CallRow({ call }: CallRowProps): JSX.Element {
   const [open, setOpen] = useState(false);
   const { data: sc, isLoading } = useScorecard(open ? call.id : null);
   const answered = call.status === "ANSWERED";
+  const analyze = useAnalyzeCall();
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [audioState, setAudioState] = useState<"idle" | "loading" | "none" | "error">("idle");
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+
+  // Derive the analysis state from data the scorecard already exposes —
+  // no extra "status" column needed:
+  //   not_analyzed: nothing yet
+  //   analyzing:    transcript landed but no analysis row (or just enqueued)
+  //   analyzed:     analysis row exists
+  const state: "not_analyzed" | "analyzing" | "analyzed" = !sc
+    ? "not_analyzed"
+    : sc.analysis
+      ? "analyzed"
+      : sc.transcript || analyze.isPending
+        ? "analyzing"
+        : "not_analyzed";
+
+  async function onAnalyze(force = false) {
+    setAnalyzeError(null);
+    if (!open) setOpen(true);
+    try {
+      await analyze.mutateAsync({ callId: call.id, force });
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message;
+      setAnalyzeError(typeof msg === "string" ? msg : "Tahlilni boshlab bo'lmadi");
+    }
+  }
 
   async function loadAudio() {
     if (audioUrl) return;
@@ -469,8 +496,40 @@ function CallRow({ call }: CallRowProps): JSX.Element {
               type="button"
               onClick={() => setOpen((v) => !v)}
               className="text-xs text-primary hover:underline"
+              title="Tahlil panelini ochish/yopish"
             >
-              {open ? "Yopish" : "Tahlil"}
+              {open ? "Yopish" : "Ochish"}
+            </button>
+          )}
+          {answered && open && state === "not_analyzed" && (
+            <button
+              type="button"
+              onClick={() => onAnalyze(false)}
+              disabled={analyze.isPending}
+              className="rounded bg-primary px-2 py-0.5 text-xs text-primary-foreground hover:opacity-90 disabled:opacity-50"
+              title="STT + LLM + QA ishga tushadi (pulli)"
+            >
+              {analyze.isPending ? "Boshlanmoqda..." : "Tahlil qil"}
+            </button>
+          )}
+          {answered && open && state === "analyzing" && (
+            <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              Tahlilda...
+            </span>
+          )}
+          {answered && open && state === "analyzed" && (
+            <button
+              type="button"
+              onClick={() => {
+                if (confirm("Bu qo'ng'iroqni qaytadan tahlil qilamizmi? (yangi LLM chaqiruvi — pulli)")) {
+                  onAnalyze(true);
+                }
+              }}
+              disabled={analyze.isPending}
+              className="rounded border px-2 py-0.5 text-xs hover:bg-accent disabled:opacity-50"
+              title="Mavjud tahlilni o'chirib, qaytadan ishga tushiradi"
+            >
+              Qayta tahlil
             </button>
           )}
         </div>
@@ -488,10 +547,24 @@ function CallRow({ call }: CallRowProps): JSX.Element {
       )}
       {open && (
         <div className="mt-2 space-y-2 border-t pt-2 text-xs">
+          {analyzeError && (
+            <div className="rounded bg-destructive/10 px-2 py-1 text-destructive">{analyzeError}</div>
+          )}
           {isLoading && <p className="text-muted-foreground">Yuklanmoqda...</p>}
           {sc && (
             <>
-              {sc.analysis ? (
+              {state === "not_analyzed" && (
+                <div className="rounded border border-dashed bg-muted/30 p-2 text-muted-foreground">
+                  Bu qo'ng'iroq hali tahlil qilinmagan. "Tahlil qil" tugmasini bosing — pulli xizmat
+                  (STT + LLM) ishga tushadi.
+                </div>
+              )}
+              {state === "analyzing" && (
+                <div className="rounded border border-dashed bg-amber-50 p-2 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                  Tahlil davom etmoqda... Yangi natija avtomatik yangilanadi.
+                </div>
+              )}
+              {sc.analysis && (
                 <div className="space-y-0.5">
                   {sc.analysis.sentiment && (
                     <div>
@@ -515,17 +588,64 @@ function CallRow({ call }: CallRowProps): JSX.Element {
                     </div>
                   )}
                 </div>
-              ) : (
-                <p className="text-muted-foreground">Tahlil hali tayyor emas.</p>
+              )}
+              {sc.analysis?.mistakes && sc.analysis.mistakes.length > 0 && (
+                <div className="rounded border border-destructive/30 bg-destructive/5 p-2">
+                  <div className="mb-1 font-semibold text-destructive">
+                    Xatoliklar ({sc.analysis.mistakes.length})
+                  </div>
+                  <ul className="space-y-1">
+                    {sc.analysis.mistakes.map((m, i) => (
+                      <li key={i} className="leading-snug">
+                        <span
+                          className={
+                            m.severity === "high"
+                              ? "rounded bg-red-200 px-1 text-[10px] font-medium text-red-900 dark:bg-red-950/60 dark:text-red-200"
+                              : m.severity === "medium"
+                                ? "rounded bg-amber-200 px-1 text-[10px] font-medium text-amber-900 dark:bg-amber-950/60 dark:text-amber-200"
+                                : "rounded bg-slate-200 px-1 text-[10px] font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                          }
+                        >
+                          {m.severity}
+                        </span>{" "}
+                        <strong>{m.section}</strong> — {m.message}
+                        {m.evidence && m.evidence !== "topilmadi" && m.evidence !== "dalil topilmadi" && (
+                          <div className="ml-4 italic text-muted-foreground">"{m.evidence}"</div>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               )}
               {sc.qaScores.length > 0 && (
-                <div className="space-y-0.5">
+                <div className="rounded border bg-card p-2">
                   {sc.qaScores.map((q) => (
-                    <div key={q.id}>
-                      <span className="text-muted-foreground">QA ({q.script?.name ?? "skript"}):</span>{" "}
-                      <span className="font-medium">
-                        {q.totalScore}/{q.maxScore}
-                      </span>
+                    <div key={q.id} className="space-y-1">
+                      <div>
+                        <span className="text-muted-foreground">QA ({q.script?.name ?? "skript"}):</span>{" "}
+                        <span className="font-semibold">
+                          {q.totalScore}/{q.maxScore}
+                        </span>
+                      </div>
+                      {q.criteriaResults && q.criteriaResults.length > 0 && (
+                        <details>
+                          <summary className="cursor-pointer text-muted-foreground">
+                            Mezonlar bo'yicha
+                          </summary>
+                          <ul className="mt-1 space-y-0.5">
+                            {q.criteriaResults.map((cr) => (
+                              <li key={cr.criterionId}>
+                                <span
+                                  className={cr.passed ? "text-emerald-600" : "text-destructive"}
+                                >
+                                  {cr.passed ? "✓" : "✗"}
+                                </span>{" "}
+                                {cr.criterionId}: {cr.score} — <em>{cr.evidence}</em>
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
+                      )}
                     </div>
                   ))}
                 </div>

@@ -223,6 +223,8 @@ describe("M8 — AI analysis + QA (mock LLM, stable evidence-backed scoring)", (
     const llm = new MockLlmAdapter();
     const tr = await prisma.transcript.findFirst({ where: { callId } });
     const script = await prisma.script.findFirst({ where: { id: scriptId } });
+    // Bridge ai-worker's BackendApiForAi shape (which gained `mistakes`) to
+    // QaService.writeAnalysis — the service DTO already accepts it.
     const backendApi = {
       writeAnalysis: async (body: Parameters<QaService["writeAnalysis"]>[0]) => {
         await qa.writeAnalysis(body);
@@ -230,7 +232,7 @@ describe("M8 — AI analysis + QA (mock LLM, stable evidence-backed scoring)", (
       writeQAScore: async (body: Parameters<QaService["writeQAScore"]>[0]) => {
         await qa.writeQAScore(body);
       },
-    } as Parameters<typeof runAnalysisJob>[1]["backend"];
+    } as unknown as Parameters<typeof runAnalysisJob>[1]["backend"];
 
     await runAnalysisJob(
       {

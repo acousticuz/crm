@@ -427,6 +427,11 @@ model Analysis {
   summary   String?
   nextStep  String?
   keyPoints Json     @default("[]")
+  // LLM-extracted list of operator deviations from the active sales script —
+  // e.g. "skipped need-discovery", "didn't offer the free hearing test",
+  // "mishandled price objection". Surfaced in the UI as "Xatoliklar".
+  // Shape: [{ section: string, severity: "low"|"medium"|"high", message: string, evidence?: string }]
+  mistakes  Json     @default("[]")
   scriptId  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

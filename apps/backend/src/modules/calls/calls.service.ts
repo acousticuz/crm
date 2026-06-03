@@ -1,10 +1,12 @@
 import {
   BadRequestException,
+  ConflictException,
   Inject,
   Injectable,
   Logger,
   NotFoundException,
   Optional,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
@@ -54,19 +56,58 @@ export class CallsService {
     tenantId: string,
     cdrUniqueId: string,
     recordingUrl: string,
+    delayMs = 0,
   ) {
-    if (!this.sttQueue) return;
-    try {
-      await this.sttQueue.add(
-        "stt",
-        { callId, tenantId, cdrUniqueId, recordingUrl: recordingUrl || undefined, language: "uz" },
-        // Delay so the PBX has finished writing the recording file (MixMonitor
-        // finalizes it a moment after hangup) before ai-worker reads it.
-        { delay: 10_000, attempts: 3, removeOnComplete: 100, removeOnFail: 50 },
-      );
-    } catch (err) {
-      this.logger.warn(`Enqueue STT failed for call ${callId}: ${(err as Error).message}`);
+    if (!this.sttQueue) {
+      throw new ServiceUnavailableException("STT navbati hozir mavjud emas");
     }
+    await this.sttQueue.add(
+      "stt",
+      { callId, tenantId, cdrUniqueId, recordingUrl: recordingUrl || undefined, language: "uz" },
+      { delay: delayMs, attempts: 3, removeOnComplete: 100, removeOnFail: 50 },
+    );
+  }
+
+  /**
+   * Operator/supervisor-triggered analysis: enqueues the full STT → analysis
+   * → QA chain for one call. STT + LLM are paid services, so this is the
+   * ONLY entry point — `completed()` no longer auto-enqueues. If the call
+   * already has an Analysis row we refuse unless `force=true` (Qayta tahlil),
+   * which drops the prior transcript/analysis/QA so the chain re-runs clean.
+   */
+  async analyze(callId: string, force = false) {
+    const { tenantId } = this.currentUser();
+    const call = await this.prisma.t.call.findFirst({
+      where: { id: callId, deletedAt: null },
+      include: { analysis: true, transcript: true },
+    });
+    if (!call) throw new NotFoundException("Qo'ng'iroq topilmadi");
+    if (call.status !== CallStatus.ANSWERED) {
+      throw new BadRequestException(
+        "Faqat javob berilgan (ANSWERED) qo'ng'iroqlarni tahlil qilish mumkin",
+      );
+    }
+    if (call.analysis && !force) {
+      throw new ConflictException(
+        "Bu qo'ng'iroq allaqachon tahlil qilingan. Qayta ishga tushirish uchun ?force=true",
+      );
+    }
+    if (force && (call.analysis || call.transcript)) {
+      // Tear down dependent rows so the new run starts from a clean slate;
+      // otherwise the upsert chain leaves stale QA scores around.
+      await this.prisma.qAScore.deleteMany({ where: { callId } });
+      await this.prisma.analysis.deleteMany({ where: { callId } });
+      await this.prisma.transcript.deleteMany({ where: { callId } });
+    }
+    await this.enqueueTranscription(
+      call.id,
+      tenantId,
+      call.cdrUniqueId ?? call.id,
+      call.recordingUrl ?? "",
+      // No delay on manual analyze — the recording is already on disk.
+    );
+    this.realtime.toTenant(tenantId, SOCKET_EVENTS.ANALYSIS_STARTED, { callId: call.id });
+    return { enqueued: true, callId: call.id, force };
   }
 
   /**
@@ -336,16 +377,9 @@ export class CallsService {
       }
     }
 
-    // Answered calls feed the transcription → analysis → QA pipeline.
-    if (dto.status === CallStatus.ANSWERED) {
-      await this.enqueueTranscription(
-        call.id,
-        dto.tenantId,
-        dto.cdrUniqueId,
-        dto.recordingUrl ?? call.recordingUrl ?? "",
-      );
-    }
-
+    // STT + LLM analysis are paid services — never run them automatically on
+    // every answered call. The supervisor/operator launches them per-call via
+    // POST /calls/:id/analyze (Tahlil qil button).
     this.realtime.toTenant(dto.tenantId, SOCKET_EVENTS.CALL_ENDED, { call });
     return call;
   }

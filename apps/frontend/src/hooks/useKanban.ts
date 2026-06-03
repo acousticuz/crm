@@ -53,6 +53,13 @@ export function useUsers() {
   });
 }
 
+export interface AnalysisMistake {
+  section: string;
+  severity: "low" | "medium" | "high";
+  message: string;
+  evidence?: string;
+}
+
 export interface CallScorecard {
   id: string;
   transcript: { text: string; language: string; confidence: number } | null;
@@ -61,12 +68,20 @@ export interface CallScorecard {
     topic: string | null;
     summary: string | null;
     nextStep: string | null;
+    keyPoints?: string[];
+    mistakes?: AnalysisMistake[];
   } | null;
   qaScores: Array<{
     id: string;
     totalScore: number;
     maxScore: number;
     script: { id: string; name: string } | null;
+    criteriaResults?: Array<{
+      criterionId: string;
+      passed: boolean;
+      score: number;
+      evidence: string;
+    }>;
   }>;
 }
 
@@ -77,6 +92,29 @@ export function useScorecard(callId: string | null) {
     queryKey: ["scorecard", callId],
     queryFn: async () => (await api.get<CallScorecard>(`/qa/scorecard/${callId}`)).data,
     enabled: !!callId,
+  });
+}
+
+/**
+ * Fires the on-demand analysis pipeline (STT → LLM → QA) for one call. Paid
+ * services run only on this explicit click. `force=true` is "Qayta tahlil"
+ * — wipes prior transcript/analysis/QA so the re-run starts clean.
+ */
+export function useAnalyzeCall() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { callId: string; force?: boolean }) =>
+      (
+        await api.post<{ enqueued: boolean; callId: string; force: boolean }>(
+          `/calls/${input.callId}/analyze`,
+          {},
+          { params: input.force ? { force: "true" } : {} },
+        )
+      ).data,
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["scorecard", vars.callId] });
+      qc.invalidateQueries({ queryKey: ["card"] });
+    },
   });
 }
 
@@ -285,11 +323,21 @@ export function useKanbanRealtime(): void {
       qc.invalidateQueries({ queryKey: ["cards"] });
       qc.invalidateQueries({ queryKey: ["card"] });
     };
+    // Analysis pipeline produces socket events at each stage so the UI can
+    // flip from "analyzing" to "analyzed" without polling.
+    const refetchAnalysis = () => {
+      qc.invalidateQueries({ queryKey: ["scorecard"] });
+      qc.invalidateQueries({ queryKey: ["card"] });
+    };
     socket.on("card:moved", refetch);
     socket.on("card:created", refetch);
     socket.on("card:updated", refetch);
     socket.on("call:ended", refetch);
     socket.on("sms:status", refetchSms);
+    socket.on("analysis:started", refetchAnalysis);
+    socket.on("analysis:ready", refetchAnalysis);
+    socket.on("transcript:ready", refetchAnalysis);
+    socket.on("qa:ready", refetchAnalysis);
     socket.on("pipeline:updated", refetchPipelines);
     return () => {
       socket.off("card:moved", refetch);
@@ -297,6 +345,10 @@ export function useKanbanRealtime(): void {
       socket.off("card:updated", refetch);
       socket.off("call:ended", refetch);
       socket.off("sms:status", refetchSms);
+      socket.off("analysis:started", refetchAnalysis);
+      socket.off("analysis:ready", refetchAnalysis);
+      socket.off("transcript:ready", refetchAnalysis);
+      socket.off("qa:ready", refetchAnalysis);
       socket.off("pipeline:updated", refetchPipelines);
     };
   }, [qc]);

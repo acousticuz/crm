@@ -9,6 +9,8 @@ export const SOCKET_EVENTS = {
   CALL_INCOMING: "call:incoming",
   CALL_ENDED: "call:ended",
   TRANSCRIPT_READY: "transcript:ready",
+  ANALYSIS_STARTED: "analysis:started",
+  ANALYSIS_READY: "analysis:ready",
   QA_READY: "qa:ready",
   SMS_STATUS: "sms:status",
   PIPELINE_UPDATED: "pipeline:updated",

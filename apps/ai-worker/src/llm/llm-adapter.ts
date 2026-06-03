@@ -1,5 +1,14 @@
 import type { TranscriptSegment } from "@acoustic-crm/shared";
 
+// Operator deviation from the active sales script. Surfaced in the UI as
+// "Xatoliklar" so the supervisor can coach on specific moments.
+export interface AnalysisMistake {
+  section: string;
+  severity: "low" | "medium" | "high";
+  message: string;
+  evidence?: string;
+}
+
 export interface AnalysisResult {
   sentiment: "positive" | "neutral" | "negative" | "mixed";
   topic: string;
@@ -7,6 +16,7 @@ export interface AnalysisResult {
   nextStep: string;
   keyPoints: string[];
   suggestedTags: string[];
+  mistakes: AnalysisMistake[];
 }
 
 export interface ScriptCriterion {
@@ -15,6 +25,15 @@ export interface ScriptCriterion {
   text: string;
   maxScore: number;
   keywords?: string[];
+}
+
+// Optional context an analyze() call may receive when the tenant has an
+// active sales script. The LLM uses it to spot deviations and produce the
+// mistakes list; without it, mistakes is returned empty.
+export interface ScriptContext {
+  name: string;
+  sections: string[];
+  criteria: ScriptCriterion[];
 }
 
 export interface CriterionGrade {
@@ -43,6 +62,6 @@ export interface TranscriptForLlm {
  */
 export interface LlmAdapter {
   readonly name: string;
-  analyze(transcript: TranscriptForLlm): Promise<AnalysisResult>;
+  analyze(transcript: TranscriptForLlm, script?: ScriptContext): Promise<AnalysisResult>;
   grade(transcript: TranscriptForLlm, criteria: ScriptCriterion[]): Promise<QaResult>;
 }

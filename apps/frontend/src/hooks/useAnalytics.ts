@@ -49,6 +49,13 @@ export interface ScorecardDetail {
     summary: string | null;
     nextStep: string | null;
     keyPoints: unknown;
+    // LLM-extracted deviations vs the active sales script.
+    mistakes?: Array<{
+      section: string;
+      severity: "low" | "medium" | "high";
+      message: string;
+      evidence?: string;
+    }>;
     script: { id: string; name: string } | null;
   } | null;
   qaScores: Array<{

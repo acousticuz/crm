@@ -2,9 +2,29 @@
 
 ## Holat
 - **Asosiy 11 milestone + Settings + Call-fixes + Integration-runtime + Operator-extension tugatildi** 🎉
-- Joriy ish: **Sotuv skripti (eshitish apparatlari) — yuqori panel + tahrirlash + QA bog'lash**
+- Joriy ish: **Tahlil tugmasi — pulli STT/LLM faqat operator bossagina ishlaydi + Xatoliklar (mistakes) ro'yxati**
 - Status: **done**
 - Repo: https://github.com/acousticuz/crm
+
+## On-demand tahlil + xatoliklar ro'yxati (2026-06-03)
+- [x] **Auto-enqueue olib tashlandi**: `calls.service.completed` ANSWERED qo'ng'iroqlar uchun avtomatik STT enqueue qilmaydi. STT + LLM pulli xizmat — faqat operator/supervisor "Tahlil qil" bossagina ishlaydi.
+- [x] **Yangi endpoint** `POST /calls/:id/analyze` (OPERATOR/SUPERVISOR/TENANT_ADMIN). Tekshiruvlar: faqat ANSWERED, mavjud Analysis bo'lsa **409** (faqat `?force=true` bilan re-run). Force rejimida eski transcript/analysis/QAScore o'chiriladi, chain qaytadan to'liq ishlaydi. Yangi socket event `analysis:started`.
+- [x] **Active sales script bo'yicha bahoss (FIX C)**: `qa.service.writeAnalysis` HAR active script uchun emas, **birinchi isActive (alphabetically)** uchun QA enqueue qiladi — operator paneli ko'rsatadigan skript bilan bir xil. Tenantning "active sales script" = yagona QA referensi.
+- [x] **`Analysis.mistakes Json` ustun + migratsiya** `20260603030000_analysis_mistakes`. LLM (Claude + OpenAI + Mock) AnalysisResult'ga `mistakes[]` qaytaradi: `{section, severity, message, evidence?}`. Prompt'lar `ScriptContext`'ni oladi va operator skriptdan og'ishgan joylarni JSON ichida qaytaradi. Mock adapter deterministik (criterion keywords transcript'da yo'q bo'lsa — o'tkazib yuborilgan deb belgilanadi). Backend `enqueueAnalysis` ham activeScript kontekstini ai-worker'ga uzatadi.
+- [x] **UI**:
+  - CardDetailSheet'da har CallRow ochilganda 3 ta holat: `not_analyzed` ("Tahlil qil" tugmasi, pulli ogohlantirish), `analyzing` (kutilmoqda, real-time yangilanadi), `analyzed` (ball, mezonlar, "Qayta tahlil" tugmasi confirm bilan).
+  - "Xatoliklar" alohida bo'lim: severity badge (low/medium/high), bo'lim nomi, xato matni, dalil.
+  - QA Mezonlar `details/summary` collapsible ichida (passed/failed + dalil + ball).
+  - ScorecardPage'da xatoliklar uchun prominent destructive-styled section.
+  - `useKanbanRealtime` `analysis:started`/`analysis:ready`/`transcript:ready`/`qa:ready` eventlarida scorecard + card cache invalidate qiladi.
+- [x] **Yangi hook** `useAnalyzeCall` — `POST /calls/:id/analyze` + force flag.
+
+### Verifikatsiya
+- `pnpm build` — 5 paket xatosiz.
+- `pnpm test` — backend **114/114** (+5 yangi `on-demand-analysis.spec.ts`: no auto-enqueue / force re-analyze / MISSED rad / mistakes ishlab chiqarish / script yo'q bo'lsa bo'sh).
+- `pnpm lint` — 0 xato.
+- pm2 reload: acoustic-backend + acoustic-ai-worker.
+- commit `feat(analysis): on-demand script-based analysis with mistake detection` + push.
 
 ## Sotuv skripti — eshitish apparatlari (2026-06-03)
 - [x] **Seed**: `apps/backend/scripts/seed-acoustic.js` ga `SALES_SCRIPT` qo'shildi — 7 bo'lim (Salomlashish 10 + Ehtiyojni aniqlash 20 + Bepul tekshiruv 15 + Mahsulot 20 + E'tiroz 15 + Keyingi qadam 15 + Xayrlashish 5 = **100 ball**). Idempotent upsert; har mezonga `text` + `maxScore` + `keywords` + `guidance[]` (operator uchun aytiladigan jumlalar). Re-seed har safar sections/criteria yangilaydi (admin'ning `isActive`'iga tegmaydi). Acoustic tenant'ga deploy qilindi (`Sotuv skripti (Acoustic eshitish apparatlari)` script id `cmpxgdluw0001pxehtg9n2ueu`).

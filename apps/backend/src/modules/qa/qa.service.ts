@@ -32,6 +32,14 @@ export interface AiAnalysisJobPayload {
   tenantId: string;
   callId: string;
   transcript?: TranscriptForLlm;
+  // When the tenant has an active sales script, ai-worker uses it to grade
+  // the call AND extract the mistakes list. Shape mirrors the LLM adapter's
+  // ScriptContext so the worker can pass it through verbatim.
+  script?: {
+    name: string;
+    sections: string[];
+    criteria: unknown[];
+  };
 }
 
 export interface QaJobPayload {
@@ -139,6 +147,7 @@ export class QaService {
         summary: dto.summary ?? null,
         nextStep: dto.nextStep ?? null,
         keyPoints: (dto.keyPoints ?? []) as unknown as Prisma.InputJsonValue,
+        mistakes: (dto.mistakes ?? []) as unknown as Prisma.InputJsonValue,
         scriptId: dto.scriptId ?? null,
       },
       update: {
@@ -147,38 +156,46 @@ export class QaService {
         summary: dto.summary ?? null,
         nextStep: dto.nextStep ?? null,
         keyPoints: (dto.keyPoints ?? []) as unknown as Prisma.InputJsonValue,
+        mistakes: (dto.mistakes ?? []) as unknown as Prisma.InputJsonValue,
         scriptId: dto.scriptId ?? null,
       },
     });
-    // Enqueue QA scoring for every active script — payload carries the
-    // transcript + criteria so the worker doesn't need a read endpoint.
+    this.realtime.toTenant(dto.tenantId, SOCKET_EVENTS.ANALYSIS_READY, {
+      callId: dto.callId,
+      analysisId: analysis.id,
+    });
+    // QA scoring runs against the ACTIVE SALES SCRIPT only (first isActive
+    // alphabetically — same selection rule as the operator panel). Scoring
+    // against every script wasted LLM calls and produced conflicting scores;
+    // tenants pick one canonical script as the grading reference.
     const transcript = await this.prisma.transcript.findFirst({
       where: { callId: dto.callId },
       select: { text: true, segments: true, language: true },
     });
-    const scripts = await this.prisma.script.findMany({
+    const activeScript = await this.prisma.script.findFirst({
       where: { tenantId: dto.tenantId, isActive: true, deletedAt: null },
+      orderBy: { name: "asc" },
       select: { id: true, criteria: true },
     });
-    if (this.qaQueue && transcript) {
-      for (const s of scripts) {
-        try {
-          await this.qaQueue.add(
-            "qa",
-            {
-              tenantId: dto.tenantId,
-              callId: dto.callId,
-              scriptId: s.id,
-              transcript,
-              criteria: Array.isArray(s.criteria) ? (s.criteria as unknown[]) : [],
-            } satisfies QaJobPayload,
-            { attempts: 3, removeOnComplete: 100, removeOnFail: 50 },
-          );
-        } catch (err) {
-          this.logger.warn(
-            `Enqueue qa job failed for call=${dto.callId} script=${s.id}: ${(err as Error).message}`,
-          );
-        }
+    if (this.qaQueue && transcript && activeScript) {
+      try {
+        await this.qaQueue.add(
+          "qa",
+          {
+            tenantId: dto.tenantId,
+            callId: dto.callId,
+            scriptId: activeScript.id,
+            transcript,
+            criteria: Array.isArray(activeScript.criteria)
+              ? (activeScript.criteria as unknown[])
+              : [],
+          } satisfies QaJobPayload,
+          { attempts: 3, removeOnComplete: 100, removeOnFail: 50 },
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Enqueue qa job failed for call=${dto.callId} script=${activeScript.id}: ${(err as Error).message}`,
+        );
       }
     }
     return analysis;
@@ -236,15 +253,36 @@ export class QaService {
       select: { text: true, segments: true, language: true },
     });
     if (!transcript) return;
+    // Pass the active sales script through so the LLM can grade the call
+    // against it AND emit the mistakes list (operator deviations) in a
+    // single round-trip. "Active sales script" = first isActive alphabetically,
+    // matching the operator panel's selection.
+    const activeScript = await this.prisma.script.findFirst({
+      where: { tenantId: input.tenantId, isActive: true, deletedAt: null },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, sections: true, criteria: true },
+    });
+    const scriptPayload = activeScript
+      ? {
+          name: activeScript.name,
+          sections: Array.isArray(activeScript.sections)
+            ? (activeScript.sections as string[])
+            : [],
+          criteria: Array.isArray(activeScript.criteria)
+            ? (activeScript.criteria as unknown[])
+            : [],
+        }
+      : undefined;
     try {
       await this.analysisQueue.add(
         "analysis",
-        { tenantId: input.tenantId, callId: input.callId, transcript } satisfies AiAnalysisJobPayload,
         {
-          attempts: 3,
-          removeOnComplete: 100,
-          removeOnFail: 50,
-        },
+          tenantId: input.tenantId,
+          callId: input.callId,
+          transcript,
+          script: scriptPayload,
+        } satisfies AiAnalysisJobPayload,
+        { attempts: 3, removeOnComplete: 100, removeOnFail: 50 },
       );
     } catch (err) {
       this.logger.warn(`Enqueue ai-analysis failed: ${(err as Error).message}`);

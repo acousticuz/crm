@@ -115,6 +115,18 @@ export class CallsController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.TENANT_ADMIN, UserRole.SUPERVISOR, UserRole.OPERATOR)
+  @Post("calls/:id/analyze")
+  @HttpCode(HttpStatus.ACCEPTED)
+  @Audit({ action: "call.analyze", entityType: "Call", entityIdPath: "params.id" })
+  analyze(
+    @Param("id") id: string,
+    @Query("force") force?: string,
+  ) {
+    return this.calls.analyze(id, force === "true" || force === "1");
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.TENANT_ADMIN, UserRole.SUPERVISOR, UserRole.OPERATOR, UserRole.ANALYST)
   @Get("calls/:id/recording")
   async recording(

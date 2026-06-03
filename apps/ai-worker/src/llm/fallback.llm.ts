@@ -2,6 +2,7 @@ import type {
   AnalysisResult,
   LlmAdapter,
   QaResult,
+  ScriptContext,
   ScriptCriterion,
   TranscriptForLlm,
 } from "./llm-adapter";
@@ -24,14 +25,14 @@ export class FallbackLlmAdapter implements LlmAdapter {
     this.name = `${primary.name}+${secondary.name}`;
   }
 
-  async analyze(t: TranscriptForLlm): Promise<AnalysisResult> {
+  async analyze(t: TranscriptForLlm, script?: ScriptContext): Promise<AnalysisResult> {
     try {
-      return await this.primary.analyze(t);
+      return await this.primary.analyze(t, script);
     } catch (err) {
       console.warn(
         `LLM primary (${this.primary.name}) analyze failed, falling back to ${this.secondary.name}: ${(err as Error).message}`,
       );
-      return this.secondary.analyze(t);
+      return this.secondary.analyze(t, script);
     }
   }
 

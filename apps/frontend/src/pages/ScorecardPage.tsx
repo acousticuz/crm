@@ -58,6 +58,41 @@ export function ScorecardPage(): JSX.Element {
         </section>
       )}
 
+      {/* Mistakes — operator deviations from the sales script. Separate
+          section so supervisors can scan it without digging through QA
+          criteria one by one. */}
+      {data.analysis?.mistakes && data.analysis.mistakes.length > 0 && (
+        <section className="rounded-lg border border-destructive/40 bg-destructive/5 p-4">
+          <h2 className="text-sm font-semibold text-destructive">
+            Xatoliklar ({data.analysis.mistakes.length})
+          </h2>
+          <ul className="mt-2 space-y-2">
+            {data.analysis.mistakes.map((m, i) => (
+              <li key={i} className="rounded border bg-background p-2">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={
+                      m.severity === "high"
+                        ? "rounded bg-red-200 px-1.5 py-0.5 text-[10px] font-semibold text-red-900 dark:bg-red-950/60 dark:text-red-200"
+                        : m.severity === "medium"
+                          ? "rounded bg-amber-200 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900 dark:bg-amber-950/60 dark:text-amber-200"
+                          : "rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                    }
+                  >
+                    {m.severity}
+                  </span>
+                  <strong className="text-sm">{m.section}</strong>
+                </div>
+                <p className="mt-1 text-sm">{m.message}</p>
+                {m.evidence && m.evidence !== "topilmadi" && m.evidence !== "dalil topilmadi" && (
+                  <p className="mt-1 text-xs italic text-muted-foreground">"{m.evidence}"</p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {/* QA scores */}
       {data.qaScores.length === 0 && (
         <p className="text-sm text-muted-foreground">QA baholar hali tayyor emas.</p>

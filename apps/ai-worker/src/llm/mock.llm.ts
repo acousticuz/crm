@@ -1,8 +1,10 @@
 import type {
+  AnalysisMistake,
   AnalysisResult,
   CriterionGrade,
   LlmAdapter,
   QaResult,
+  ScriptContext,
   ScriptCriterion,
   TranscriptForLlm,
 } from "./llm-adapter";
@@ -30,7 +32,7 @@ import type {
 export class MockLlmAdapter implements LlmAdapter {
   readonly name = "mock";
 
-  async analyze(transcript: TranscriptForLlm): Promise<AnalysisResult> {
+  async analyze(transcript: TranscriptForLlm, script?: ScriptContext): Promise<AnalysisResult> {
     const t = transcript.text.toLowerCase();
     const sentiment: AnalysisResult["sentiment"] =
       /shikoyat|qaytarish|jahl|yomon|qanoatlanmadim/.test(t)
@@ -75,7 +77,30 @@ export class MockLlmAdapter implements LlmAdapter {
       )),
     );
 
-    return { sentiment, topic, summary, nextStep, keyPoints, suggestedTags };
+    // Deterministic mistake detection: every criterion whose keywords don't
+    // appear in the transcript is logged as a "skipped <section>" mistake.
+    // Mirrors what the real LLM is asked to do, so tests can assert the
+    // mistakes shape without an HTTP call.
+    const mistakes: AnalysisMistake[] = [];
+    if (script && script.criteria.length > 0) {
+      for (const c of script.criteria) {
+        const kw = (c.keywords && c.keywords.length > 0
+          ? c.keywords
+          : c.text.toLowerCase().split(/\s+/).filter((w) => w.length > 4)
+        ).map((k) => k.toLowerCase());
+        const matched = kw.some((k) => t.includes(k));
+        if (!matched) {
+          mistakes.push({
+            section: c.section,
+            severity: c.maxScore >= 15 ? "high" : c.maxScore >= 10 ? "medium" : "low",
+            message: `Operator "${c.section}" bosqichini o'tkazib yubordi: ${c.text}`,
+            evidence: "dalil topilmadi",
+          });
+        }
+      }
+    }
+
+    return { sentiment, topic, summary, nextStep, keyPoints, suggestedTags, mistakes };
   }
 
   async grade(

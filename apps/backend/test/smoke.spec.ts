@@ -270,7 +270,7 @@ describe("M11 — Full pipeline smoke test", () => {
       writeQAScore: async (body: Parameters<QaService["writeQAScore"]>[0]) => {
         await qa.writeQAScore(body);
       },
-    } as Parameters<typeof runAnalysisJob>[1]["backend"];
+    } as unknown as Parameters<typeof runAnalysisJob>[1]["backend"];
     await runAnalysisJob(
       {
         tenantId,
