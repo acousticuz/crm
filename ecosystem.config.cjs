@@ -66,5 +66,20 @@ module.exports = {
       max_restarts: 20,
       time: true,
     },
+    {
+      // Real-time AI receptionist (FastAGI TCP server). FreePBX routes
+      // out-of-hours / queue-timeout calls here. Disabled by default —
+      // start with `pm2 start ecosystem.config.cjs --only acoustic-voice-ai-worker`
+      // once VOICE_AI_TENANT_ID and Google/Claude credentials are configured.
+      name: "acoustic-voice-ai-worker",
+      cwd: path.join(root, "apps/voice-ai-worker"),
+      script: "dist/main.js",
+      exec_mode: "fork",
+      instances: 1,
+      env,
+      autorestart: true,
+      max_restarts: 20,
+      time: true,
+    },
   ],
 };
