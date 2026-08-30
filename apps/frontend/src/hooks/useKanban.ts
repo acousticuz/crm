@@ -36,19 +36,27 @@ export function usePipelines() {
 export function useCards(filters: CardFilters) {
   return useQuery<PageResult<CardListItem>>({
     queryKey: ["cards", filters],
-    queryFn: async () =>
-      (
-        await api.get<PageResult<CardListItem>>("/cards", {
-          // Kanban shows ALL cards in every stage at once, so cap high enough
-          // that even a months-worth of imports lands in one page. Larger
-          // tenants will eventually want a per-stage paginated load — keep
-          // this in mind when total cards crosses ~5000.
-          params: { ...filters, pageSize: 2000 },
+    queryFn: async () => {
+      const pageSize = 2000;
+      const items: CardListItem[] = [];
+      let page = 1;
+      let total = 0;
+
+      do {
+        const response = await api.get<PageResult<CardListItem>>("/cards", {
+          params: { ...filters, page, pageSize },
           // Axios default serializes arrays as `branchIds[]=a&branchIds[]=b`.
           // The Nest DTO Transform accepts that out of the box.
           paramsSerializer: { indexes: null },
-        })
-      ).data,
+        });
+        total = response.data.total;
+        items.push(...response.data.items);
+        if (response.data.items.length === 0) break;
+        page += 1;
+      } while (items.length < total);
+
+      return { items, total, page: 1, pageSize };
+    },
     enabled: !!filters.pipelineId,
   });
 }

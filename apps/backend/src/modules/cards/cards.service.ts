@@ -147,7 +147,9 @@ export class CardsService {
     const [rows, total] = await Promise.all([
       this.prisma.t.card.findMany({
         where,
-        orderBy: [{ stageId: "asc" }, { enteredStageAt: "desc" }],
+        // The id tie-breaker keeps multi-page Kanban loads deterministic when
+        // multiple cards entered a stage at the same timestamp.
+        orderBy: [{ stageId: "asc" }, { enteredStageAt: "desc" }, { id: "asc" }],
         skip: (page - 1) * pageSize,
         take: pageSize,
         include: {
