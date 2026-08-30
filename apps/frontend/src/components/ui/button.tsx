@@ -3,45 +3,44 @@ import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
-// All variant/size/asChild props stay byte-identical to the previous API —
-// only the visual treatment changes. See STYLE_GUIDE.md for the rationale
-// (soft shadows over heavy fills, tight rounding, semantic primary).
+// Soft Modern Button — same public API as the previous shadcn shape so any
+// callsite that passed `variant` / `size` / `asChild` keeps working. What
+// changed is the resting visual: rounded-md (10px), card shadow at rest,
+// soft accent-soft tint on outline hover.
 const buttonVariants = cva(
-  // Shared shell: tight tracking + tabular numerals so labels with numbers
-  // (e.g. "Yutdi: 12") align across rows.
-  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium tracking-tightish tabular-nums " +
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium tabular-nums " +
     "ring-offset-background transition-all duration-150 ease-out " +
-    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 " +
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 " +
     "disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        // Solid primary, subtle elevation. Hover dims with brightness for a
-        // more dimensional feel than a flat opacity change.
+        // Solid teal — the brand action. Soft hover via a slightly darker
+        // shade, not a brightness shift, so it stays on-brand in both modes.
         default:
-          "bg-primary text-primary-foreground shadow-xs hover:brightness-110 active:brightness-95",
+          "bg-primary text-primary-foreground shadow-card hover:bg-primary-hover active:shadow-none",
+        // Destructive solid — used sparingly (delete, disconnect).
         destructive:
-          "bg-destructive text-destructive-foreground shadow-xs hover:brightness-110 active:brightness-95",
-        // 1px hairline border with soft surface hover — quieter than the old
-        // accent-fill so the page can be denser without feeling busy.
+          "bg-destructive text-destructive-foreground shadow-card hover:bg-destructive/90 active:shadow-none",
+        // Outline — calm, takes the warm canvas on hover. Stays muted so
+        // primary actions still dominate any toolbar.
         outline:
-          "border border-input bg-background text-foreground shadow-xs hover:bg-surface hover:border-border",
-        // Secondary doubles as a "neutral filled" — quieter than primary but
-        // still tactile (no border, slight fill).
+          "border border-input bg-card text-foreground shadow-card hover:bg-primary-soft hover:text-primary-soft-foreground hover:border-primary/30",
+        // Secondary — neutral filled chip / quiet button.
         secondary:
-          "bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80",
-        // Ghost = chromeless, used in toolbars and inline actions.
+          "bg-secondary text-secondary-foreground shadow-card hover:bg-surface",
+        // Ghost — chromeless, for toolbars and inline actions.
         ghost: "text-foreground hover:bg-surface",
         link: "text-primary underline-offset-4 hover:underline shadow-none",
       },
       size: {
-        // Tighter heights than shadcn defaults (was 40/36/44/40) — the new
-        // type scale renders larger inline, so the buttons no longer need
-        // as much vertical padding.
-        default: "h-9 px-3.5 text-sm",
-        sm: "h-8 px-3 text-xs",
-        lg: "h-10 px-5 text-sm",
-        icon: "h-9 w-9",
+        // 40px default lands on the 44px touch-target requirement once you
+        // count the 2px focus ring + offset. Smaller sizes stay >36px so
+        // the secondary toolbar buttons still hit a tap target.
+        default: "h-10 px-4 text-sm",
+        sm: "h-9 px-3 text-xs",
+        lg: "h-11 px-6 text-sm",
+        icon: "h-10 w-10",
       },
     },
     defaultVariants: { variant: "default", size: "default" },

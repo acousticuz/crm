@@ -3,7 +3,7 @@ import { CheckCircle2, Plug, XCircle, AlertTriangle, Loader2, RefreshCw } from "
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { PipelineEditor } from "@/components/settings/PipelineEditor";
@@ -17,7 +17,14 @@ import {
   type Integration,
   type IntegrationType,
 } from "@/hooks/useIntegrations";
-import { useSyncSmsTemplates } from "@/hooks/useKanban";
+import {
+  useCreateSmsTemplate,
+  useDeleteSmsTemplate,
+  useSmsTemplates,
+  useSyncSmsTemplates,
+  useUpdateSmsTemplate,
+  type SmsTemplate,
+} from "@/hooks/useKanban";
 
 // Field definitions per integration type — secret flag drives password input
 // + "leave blank to keep" hint.
@@ -111,20 +118,33 @@ export function SettingsPage(): JSX.Element {
   }
 
   return (
-    <div className="space-y-5">
-      <h1 className="text-2xl font-semibold">Sozlamalar</h1>
-      <div className="flex gap-2 border-b">
+    <div className="space-y-6">
+      <div>
+        <p className="eyebrow mb-1">Sozlash</p>
+        <h1 className="font-display text-3xl font-semibold tracking-tightish text-foreground">
+          Sozlamalar
+        </h1>
+      </div>
+      <div className="flex gap-1 border-b">
         {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
             onClick={() => setTab(t.id)}
             className={cn(
-              "px-3 py-2 text-sm font-medium border-b-2 -mb-px",
-              tab === t.id ? "border-primary text-primary" : "border-transparent text-muted-foreground",
+              "relative -mb-px px-3 py-2 text-sm font-medium transition-colors",
+              tab === t.id
+                ? "text-foreground"
+                : "text-muted-foreground hover:text-foreground",
             )}
           >
             {t.label}
+            {tab === t.id && (
+              <span
+                aria-hidden
+                className="absolute inset-x-0 -bottom-px h-[2px] rounded-full bg-primary"
+              />
+            )}
           </button>
         ))}
       </div>
@@ -162,27 +182,29 @@ function IntegrationsTab(): JSX.Element {
 }
 
 function StatusBadge({ status }: { status: Integration["status"] }) {
+  // Soft Modern integration status — same chip pattern as the rest of the
+  // system, driven by data-tone.
   if (status === "CONNECTED") {
     return (
-      <Badge color="#16a34a">
-        <CheckCircle2 className="mr-1 inline h-3 w-3" />
+      <span className="chip" data-tone="success">
+        <CheckCircle2 className="h-3 w-3" />
         Ulangan
-      </Badge>
+      </span>
     );
   }
   if (status === "ERROR") {
     return (
-      <Badge color="#dc2626">
-        <XCircle className="mr-1 inline h-3 w-3" />
+      <span className="chip" data-tone="destructive">
+        <XCircle className="h-3 w-3" />
         Xato
-      </Badge>
+      </span>
     );
   }
   return (
-    <Badge color="#64748b">
-      <AlertTriangle className="mr-1 inline h-3 w-3" />
+    <span className="chip" data-tone="muted">
+      <AlertTriangle className="h-3 w-3" />
       Ulanmagan
-    </Badge>
+    </span>
   );
 }
 
@@ -262,11 +284,15 @@ function IntegrationCard({ integration }: { integration: Integration }) {
   const showSync = integration.type === "SMS" && (provider === "eskiz" || integration.provider === "eskiz");
 
   return (
-    <div className="rounded-lg border bg-card p-4">
-      <div className="flex items-center justify-between">
+    <div className="card-surface p-5">
+      <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <Plug className="h-4 w-4 text-muted-foreground" />
-          <h2 className="text-sm font-semibold">{TITLES[integration.type]}</h2>
+          <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-surface text-muted-foreground">
+            <Plug className="h-3.5 w-3.5" />
+          </span>
+          <h2 className="font-display text-sm font-semibold tracking-tightish text-foreground">
+            {TITLES[integration.type]}
+          </h2>
         </div>
         <StatusBadge status={integration.status} />
       </div>
@@ -338,6 +364,7 @@ function IntegrationCard({ integration }: { integration: Integration }) {
             );
           })}
           {msg && <p className="text-xs">{msg}</p>}
+          {integration.type === "SMS" && <SmsTemplatesEditor />}
           <div className="flex flex-wrap gap-2 pt-1">
             <Button size="sm" onClick={onSave} disabled={save.isPending}>
               {save.isPending && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
@@ -383,6 +410,147 @@ function IntegrationCard({ integration }: { integration: Integration }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function SmsTemplatesEditor() {
+  const { data: templates = [] } = useSmsTemplates();
+  const createTemplate = useCreateSmsTemplate();
+  const updateTemplate = useUpdateSmsTemplate();
+  const deleteTemplate = useDeleteSmsTemplate();
+  const [draft, setDraft] = useState({ name: "", body: "" });
+  const [editing, setEditing] = useState<Record<string, { name: string; body: string }>>({});
+  const [msg, setMsg] = useState<string | null>(null);
+
+  async function onCreate() {
+    if (!draft.name.trim() || !draft.body.trim()) return;
+    setMsg(null);
+    try {
+      await createTemplate.mutateAsync({
+        name: draft.name.trim(),
+        body: draft.body.trim(),
+      });
+      setDraft({ name: "", body: "" });
+      setMsg("Template qo'shildi ✓");
+    } catch (e) {
+      setMsg(extractErr(e));
+    }
+  }
+
+  async function onUpdate(t: SmsTemplate) {
+    const row = editing[t.id] ?? { name: t.name, body: t.body };
+    if (!row.name.trim() || !row.body.trim()) return;
+    setMsg(null);
+    try {
+      await updateTemplate.mutateAsync({
+        id: t.id,
+        name: row.name.trim(),
+        body: row.body.trim(),
+      });
+      setMsg("Template yangilandi ✓");
+    } catch (e) {
+      setMsg(extractErr(e));
+    }
+  }
+
+  async function onDelete(t: SmsTemplate) {
+    if (!window.confirm(`"${t.name}" template o'chirilsinmi?`)) return;
+    setMsg(null);
+    try {
+      await deleteTemplate.mutateAsync(t.id);
+      setMsg("Template o'chirildi ✓");
+    } catch (e) {
+      setMsg(extractErr(e));
+    }
+  }
+
+  return (
+    <div className="mt-3 space-y-3 rounded-md border p-3">
+      <div>
+        <p className="text-sm font-medium">SMS shablonlar</p>
+        <p className="text-xs text-muted-foreground">
+          Operatorlar SMS yuborishda shu shablonlardan tanlaydi.
+        </p>
+      </div>
+
+      <div className="space-y-2 rounded-md bg-muted/30 p-2">
+        <Input
+          value={draft.name}
+          onChange={(e) => setDraft((s) => ({ ...s, name: e.target.value }))}
+          placeholder="Yangi template nomi"
+        />
+        <Textarea
+          value={draft.body}
+          onChange={(e) => setDraft((s) => ({ ...s, body: e.target.value }))}
+          placeholder="Matn. Masalan: Assalomu alaykum, {ism}..."
+          className="min-h-[80px]"
+        />
+        <Button
+          size="sm"
+          disabled={createTemplate.isPending || !draft.name.trim() || !draft.body.trim()}
+          onClick={onCreate}
+        >
+          {createTemplate.isPending && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+          Template qo'shish
+        </Button>
+      </div>
+
+      {templates.length === 0 ? (
+        <p className="text-xs text-muted-foreground">Hozircha SMS template yo'q.</p>
+      ) : (
+        <div className="space-y-2">
+          {templates.map((t) => {
+            const row = editing[t.id] ?? { name: t.name, body: t.body };
+            const isExternal = Boolean(t.externalProvider && t.externalId);
+            return (
+              <div key={t.id} className="space-y-2 rounded-md border p-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-medium">
+                      {isExternal ? "Provider template" : "Qo'lda kiritilgan"}
+                    </p>
+                    {t.externalStatus && (
+                      <p className="text-[10px] text-muted-foreground">Status: {t.externalStatus}</p>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={deleteTemplate.isPending}
+                    onClick={() => onDelete(t)}
+                  >
+                    O'chirish
+                  </Button>
+                </div>
+                <Input
+                  value={row.name}
+                  onChange={(e) =>
+                    setEditing((s) => ({ ...s, [t.id]: { ...row, name: e.target.value } }))
+                  }
+                />
+                <Textarea
+                  value={row.body}
+                  onChange={(e) =>
+                    setEditing((s) => ({ ...s, [t.id]: { ...row, body: e.target.value } }))
+                  }
+                  className="min-h-[90px]"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={updateTemplate.isPending || !row.name.trim() || !row.body.trim()}
+                  onClick={() => onUpdate(t)}
+                >
+                  {updateTemplate.isPending && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+                  Saqlash
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {msg && <p className="text-xs">{msg}</p>}
     </div>
   );
 }

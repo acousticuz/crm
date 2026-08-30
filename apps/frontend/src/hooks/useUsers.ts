@@ -28,6 +28,8 @@ export interface CreateUserInput {
 
 export type UpdateUserInput = Partial<{
   fullName: string;
+  /** New login email. Backend rejects duplicates across all tenants. */
+  email: string;
   password: string;
   role: UserRole;
   status: UserStatus;

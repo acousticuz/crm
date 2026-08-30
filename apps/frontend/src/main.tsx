@@ -4,7 +4,12 @@ import { RouterProvider } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider } from "./lib/auth";
 import { router } from "./router";
+import { bootstrapTheme } from "./hooks/useTheme";
 import "./index.css";
+
+// Apply the persisted theme before React mounts so there's no light-then-dark
+// flash on first paint.
+bootstrapTheme();
 
 const queryClient = new QueryClient({
   defaultOptions: {

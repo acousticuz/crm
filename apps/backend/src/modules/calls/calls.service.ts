@@ -33,6 +33,26 @@ import {
   OriginateCallDto,
 } from "./dto/call.dto";
 
+
+interface AcousticPhoneLookup {
+  found?: boolean;
+  client_id?: number;
+  client_name?: string | null;
+  phone_number?: string | null;
+  birthday?: string | null;
+  gender?: string | null;
+  city?: string | null;
+  last_purchase_date?: string | null;
+  last_purchase_branch_id?: number | null;
+  last_purchase_branch_name?: string | null;
+  lifetime_amount?: number;
+  products?: Array<{
+    product_ref_id?: number | null;
+    product_name?: string | null;
+    quantity?: number | null;
+  }>;
+}
+
 @Injectable()
 export class CallsService {
   private readonly logger = new Logger(CallsService.name);
@@ -139,18 +159,89 @@ export class CallsService {
   ) {
     const phone = tryNormalizePhone(rawPhone);
     if (!phone) return null;
+    const acoustic = await this.lookupAcousticByPhone(phone);
+    const acousticFields = acoustic?.found
+      ? {
+          clientId: acoustic.client_id ?? null,
+          clientName: acoustic.client_name ?? null,
+          phoneNumber: acoustic.phone_number ?? phone,
+          birthday: acoustic.birthday ?? null,
+          gender: acoustic.gender ?? null,
+          city: acoustic.city ?? null,
+          lastPurchaseDate: acoustic.last_purchase_date ?? null,
+          lastPurchaseBranchId: acoustic.last_purchase_branch_id ?? null,
+          lastPurchaseBranchName: acoustic.last_purchase_branch_name ?? null,
+          lifetimeAmount: acoustic.lifetime_amount ?? 0,
+          products: acoustic.products ?? [],
+          syncedAt: new Date().toISOString(),
+        }
+      : null;
+    const fullName = acoustic?.client_name?.trim() || "Noma'lum";
+
     const existing = await this.prisma.t.contact.findFirst({
       where: { phones: { has: phone }, deletedAt: null },
     });
-    if (existing) return existing;
+    if (existing) {
+      const existingCustom = this.asObject(existing.customFields);
+      const shouldUpdateName =
+        acoustic?.client_name?.trim() &&
+        (!existing.fullName || existing.fullName.trim().toLowerCase().startsWith("noma"));
+      if (acousticFields || shouldUpdateName) {
+        return this.prisma.t.contact.update({
+          where: { id: existing.id },
+          data: {
+            ...(shouldUpdateName ? { fullName } : {}),
+            ...(acousticFields
+              ? {
+                  customFields: {
+                    ...existingCustom,
+                    acousticAnalytics: acousticFields,
+                  },
+                }
+              : {}),
+          },
+        });
+      }
+      return existing;
+    }
     return this.prisma.t.contact.create({
       data: {
         tenantId,
-        fullName: "Noma'lum",
+        fullName,
         phones: [phone],
         source,
+        ...(acousticFields
+          ? {
+              customFields: {
+                acousticAnalytics: acousticFields,
+              },
+            }
+          : {}),
       },
     });
+  }
+
+  private async lookupAcousticByPhone(phone: string): Promise<AcousticPhoneLookup | null> {
+    const base = this.config.get<string>("ACOUSTIC_API_URL", "").replace(/\/$/, "");
+    const key = this.config.get<string>("ACOUSTIC_INTERNAL_API_KEY", "");
+    if (!base || !key) return null;
+    try {
+      const url = new URL(`${base}/v1/clients/by-phone`);
+      url.searchParams.set("phone", phone);
+      const res = await fetch(url, { headers: { "X-Internal-Key": key } });
+      if (!res.ok) return null;
+      const payload = (await res.json().catch(() => null)) as AcousticPhoneLookup | null;
+      return payload?.found ? payload : null;
+    } catch (err) {
+      this.logger.warn(`Acoustic phone lookup failed for ${phone}: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
+  private asObject(value: unknown): Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
   }
 
   private async openCardFor(contactId: string) {
@@ -224,18 +315,14 @@ export class CallsService {
       return { ignored: true, callId: null, contactId: null, cardId: null };
     }
 
-    // Inbound: create a "Noma'lum" contact if unknown. Outbound: link if the
-    // dialed number already belongs to a contact, else leave null.
-    const contact = isInbound
-      ? await this.resolveOrCreateContact(dto.tenantId, customerRaw, "inbound_call")
-      : await this.prisma.t.contact.findFirst({
-          where: { phones: { has: tryNormalizePhone(customerRaw)! }, deletedAt: null },
-        });
-    const card = contact
-      ? isInbound
-        ? await this.openOrCreateCardFor(dto.tenantId, contact)
-        : await this.openCardFor(contact.id)
-      : null;
+    // Every real customer call should surface on Kanban. Create/reuse the
+    // contact and open card for both inbound and outbound calls.
+    const contact = await this.resolveOrCreateContact(
+      dto.tenantId,
+      customerRaw,
+      isInbound ? "inbound_call" : "outbound_call",
+    );
+    const card = contact ? await this.openOrCreateCardFor(dto.tenantId, contact) : null;
 
     const call = await this.prisma.t.call.upsert({
       where: {
@@ -308,21 +395,15 @@ export class CallsService {
     const isInbound = dto.direction === CallDirection.INBOUND;
     const customerRaw = isInbound ? dto.fromNumber : dto.toNumber;
 
-    // Resolve the customer contact. For inbound calls we CREATE a "Noma'lum"
-    // contact if unknown so no call/number is ever lost (idempotent). For
-    // outbound we only link to an existing contact.
-    const contact = isInbound
-      ? await this.resolveOrCreateContact(dto.tenantId, customerRaw, "inbound_call")
-      : tryNormalizePhone(customerRaw)
-        ? await this.prisma.t.contact.findFirst({
-            where: { phones: { has: tryNormalizePhone(customerRaw)! }, deletedAt: null },
-          })
-        : null;
-    const card = contact
-      ? isInbound
-        ? await this.openOrCreateCardFor(dto.tenantId, contact)
-        : await this.openCardFor(contact.id)
-      : null;
+    // Every completed real customer call should have a contact and an open
+    // Kanban card. `started` usually created them already; this keeps retries
+    // and missed started-events safe.
+    const contact = await this.resolveOrCreateContact(
+      dto.tenantId,
+      customerRaw,
+      isInbound ? "inbound_call" : "outbound_call",
+    );
+    const card = contact ? await this.openOrCreateCardFor(dto.tenantId, contact) : null;
 
     const call = await this.prisma.t.call.upsert({
       where: {
@@ -494,11 +575,21 @@ export class CallsService {
     const dir = this.config.get<string>("RECORDINGS_DIR", "");
     const uid = call.cdrUniqueId;
     if (!dir || !uid || !/^[\d.]+$/.test(uid)) return null;
+    // FreePBX organizes recordings as <dir>/YYYY/MM/DD/. Narrow the find root
+    // to the call's date so an sshfs/NFS mount doesn't time out walking the
+    // whole tree. Falls back to the full dir if the day subfolder is missing
+    // (e.g. clock skew, manual file move). 30s timeout for the same reason.
+    const fs = await import("node:fs");
+    const iso = (call.startedAt instanceof Date ? call.startedAt : new Date(call.startedAt))
+      .toISOString().slice(0, 10);
+    const [yyyy, mm, dd] = iso.split("-");
+    const dayDir = `${dir}/${yyyy}/${mm}/${dd}`;
+    const searchRoot = fs.existsSync(dayDir) ? dayDir : dir;
     try {
       const out = execFileSync(
         "find",
-        [dir, "-name", `*${uid}.wav`, "-type", "f", "-size", "+1k"],
-        { encoding: "utf8", timeout: 10_000 },
+        [searchRoot, "-name", `*${uid}.wav`, "-type", "f", "-size", "+1k"],
+        { encoding: "utf8", timeout: 30_000 },
       ).trim();
       return out.split("\n").filter(Boolean)[0] ?? null;
     } catch {
@@ -519,12 +610,15 @@ export class CallsService {
 
   /**
    * Manually attach a branch to a call — the customer-asked-for branch, set
-   * by the operator post-hoc. Feeds the monthly per-branch funnel report.
+   * by the operator post-hoc. Feeds the monthly per-branch funnel report and,
+   * when the parent card has no branch yet, promotes the choice onto the
+   * card so the Kanban branch filter surfaces it.
    */
   async setBranch(callId: string, branchId: string | null) {
     const { tenantId } = this.currentUser();
     const call = await this.prisma.t.call.findFirst({
       where: { id: callId, deletedAt: null },
+      select: { id: true, cardId: true },
     });
     if (!call) throw new NotFoundException("Qo'ng'iroq topilmadi");
     if (branchId) {
@@ -534,11 +628,22 @@ export class CallsService {
       });
       if (!b) throw new BadRequestException("Bunday filial topilmadi");
     }
-    return this.prisma.t.call.update({
+    const updated = await this.prisma.t.call.update({
       where: { id: callId },
       data: { branchId },
       include: { branch: { select: { id: true, name: true } } },
     });
+    // Forward-propagate to the parent card when it has no branch yet — so
+    // attaching a branch on a call also makes the card show up under that
+    // branch in the Kanban filter. Don't overwrite a card whose branch was
+    // already set (e.g. an explicit operator pick elsewhere).
+    if (call.cardId && branchId) {
+      await this.prisma.t.card.updateMany({
+        where: { id: call.cardId, branchId: null, deletedAt: null },
+        data: { branchId },
+      });
+    }
+    return updated;
   }
 
   // ===== Listing =====
@@ -573,12 +678,28 @@ export class CallsService {
    * linked card. `missedOnly` filters to MISSED rows, used by the dashboard's
    * "missed calls" tile.
    */
-  listRecent(opts: { limit?: number; missedOnly?: boolean }) {
+  listRecent(opts: {
+    limit?: number;
+    missedOnly?: boolean;
+    dateFrom?: string;
+    dateTo?: string;
+  }) {
     const take = Math.min(Math.max(opts.limit ?? 100, 1), 500);
+    // Date filter is inclusive on dateFrom (>= 00:00) and exclusive on dateTo
+    // + 1 day (< next day 00:00) so the user's intent of "show me 2026-06-01
+    // to 2026-06-28" includes the full 28th day.
+    const startedAt: Record<string, Date> = {};
+    if (opts.dateFrom) startedAt.gte = new Date(opts.dateFrom);
+    if (opts.dateTo) {
+      const to = new Date(opts.dateTo);
+      to.setDate(to.getDate() + 1);
+      startedAt.lt = to;
+    }
     return this.prisma.t.call.findMany({
       where: {
         deletedAt: null,
         ...(opts.missedOnly ? { status: CallStatus.MISSED } : {}),
+        ...(Object.keys(startedAt).length ? { startedAt } : {}),
       },
       orderBy: { startedAt: "desc" },
       take,

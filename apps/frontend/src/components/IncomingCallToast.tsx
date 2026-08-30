@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Phone, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   useIncomingCallListener,
   type IncomingCallPayload,
@@ -36,19 +37,27 @@ export function IncomingCallToast(): JSX.Element | null {
   const isPlaceholder = isPlaceholderContact(active.contact?.fullName);
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 w-80 rounded-lg border bg-card shadow-xl">
+    // Soft Modern toast — left accent border per the design brief; sits in
+    // the bottom-right on desktop and slides up from below on mobile.
+    <div
+      className={cn(
+        "fixed z-50 w-80 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-lg border-l-4 border-l-primary border-y border-r bg-card shadow-modal",
+        "bottom-20 right-3 md:bottom-6 md:right-6",
+      )}
+    >
       <div className="flex items-center gap-3 border-b p-3">
-        <div className="rounded-full bg-primary/10 p-2 text-primary">
+        <div className="rounded-full bg-primary-soft p-2 text-primary-soft-foreground">
           <Phone className="h-5 w-5" />
         </div>
         <div className="flex-1">
-          <p className="text-sm font-semibold">Kirish qo'ng'iroq</p>
-          <p className="text-xs text-muted-foreground">{active.fromNumber}</p>
+          <p className="text-sm font-semibold text-foreground">Kirish qo'ng'iroq</p>
+          <p className="font-mono text-xs text-muted-foreground">{active.fromNumber}</p>
         </div>
         <button
           type="button"
           onClick={() => setActive(null)}
-          className="text-muted-foreground hover:text-foreground"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-foreground"
+          aria-label="Yopish"
         >
           <X className="h-4 w-4" />
         </button>

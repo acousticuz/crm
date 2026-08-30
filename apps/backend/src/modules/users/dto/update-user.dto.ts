@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString, Matches, MaxLength, MinLength } from "class-validator";
+import { IsEmail, IsEnum, IsOptional, IsString, Matches, MaxLength, MinLength } from "class-validator";
 import { UserRole, UserStatus } from "@acoustic-crm/shared";
 
 export class UpdateUserDto {
@@ -7,6 +7,15 @@ export class UpdateUserDto {
   @MinLength(2)
   @MaxLength(100)
   fullName?: string;
+
+  // Login email — editable post-import so admins can replace the
+  // auto-generated `2001@acoustic-xxxx.local` from the PBX bulk-create with
+  // the operator's real address. Service rejects duplicates within the
+  // tenant.
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(180)
+  email?: string;
 
   @IsOptional()
   @IsString()

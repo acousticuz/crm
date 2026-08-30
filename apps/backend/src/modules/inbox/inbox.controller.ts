@@ -22,6 +22,7 @@ import { TelegramWebhookGuard } from "./telegram-webhook.guard";
 import {
   ApproveDraftDto,
   InboxWebhookDto,
+  LinkThreadPhoneDto,
   ListThreadsQueryDto,
   RejectDraftDto,
   SendManualMessageDto,
@@ -124,5 +125,14 @@ export class InboxController {
   @Audit({ action: "inbox.message.send", entityType: "InboxThread", entityIdPath: "params.id" })
   sendManual(@Param("id") id: string, @Body() dto: SendManualMessageDto) {
     return this.inbox.sendManual(id, dto);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.TENANT_ADMIN, UserRole.SUPERVISOR, UserRole.OPERATOR)
+  @Post("inbox/threads/:id/contact-phone")
+  @HttpCode(HttpStatus.OK)
+  @Audit({ action: "inbox.contact.phone_link", entityType: "InboxThread", entityIdPath: "params.id" })
+  linkPhone(@Param("id") id: string, @Body() dto: LinkThreadPhoneDto) {
+    return this.inbox.linkPhoneToThread(id, dto);
   }
 }

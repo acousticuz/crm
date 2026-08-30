@@ -179,6 +179,20 @@ export class UsersService {
     if (dto.password) {
       data.passwordHash = await AuthService.hashPassword(dto.password);
     }
+    // Email change — supports replacing the auto-generated PBX-import email
+    // (`2001@acoustic-xxxx.local`) with the operator's real address.
+    // Cross-tenant uniqueness is enforced because emails are the login
+    // credential — two users with the same email would collide at auth time.
+    if (dto.email !== undefined && dto.email.toLowerCase() !== existing.email.toLowerCase()) {
+      const taken = await this.prisma.user.findFirst({
+        where: { email: dto.email, deletedAt: null, NOT: { id } },
+        select: { id: true },
+      });
+      if (taken) {
+        throw new BadRequestException("Email allaqachon ishlatilmoqda");
+      }
+      data.email = dto.email;
+    }
     return this.prisma.t.user.update({
       where: { id },
       data,

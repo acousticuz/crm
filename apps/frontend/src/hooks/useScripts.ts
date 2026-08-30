@@ -33,19 +33,21 @@ export function useScripts() {
   });
 }
 
-/**
- * The script the operator workspace surfaces in the top "Sotuv skripti" panel.
- * Resolves to the first active script alphabetically — matches the seed's
- * "Sotuv skripti (Acoustic eshitish apparatlari)" by default; admins can
- * rename or toggle isActive to swap the primary.
- */
 export function useActiveScript() {
   const scripts = useScripts();
   const active =
     scripts.data
       ?.filter((s) => s.isActive)
-      .sort((a, b) => a.name.localeCompare(b.name))[0] ?? null;
+      .sort((a, b) => scriptCompletenessScore(b) - scriptCompletenessScore(a))[0] ?? null;
   return { ...scripts, data: active };
+}
+
+function scriptCompletenessScore(script: Script): number {
+  const sections = Array.isArray(script.sections) ? script.sections.length : 0;
+  const criteria = Array.isArray(script.criteria) ? script.criteria : [];
+  const guidance = criteria.reduce((sum, c) => sum + (c.guidance?.length ?? 0), 0);
+  const keywords = criteria.reduce((sum, c) => sum + (c.keywords?.length ?? 0), 0);
+  return sections * 100 + criteria.length * 10 + guidance + keywords;
 }
 
 export function useUpdateScript() {

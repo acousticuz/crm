@@ -50,12 +50,19 @@ export interface CardListItem {
   responsibleUserId?: string | null;
   branchId?: string | null;
   status: CardStatus;
+  lostReason?: string | null;
   budget?: string | null;
   dueDate?: string | null;
   enteredStageAt: string;
   createdAt: string;
   cardTags: Array<{ cardId: string; tagId: string; tag: Tag }>;
   hasMissedCall?: boolean;
+  lastCall?: {
+    id: string;
+    status: string;
+    direction: "INBOUND" | "OUTBOUND";
+    startedAt: string;
+  } | null;
   // Most recent SmsLog summary so the column card can show "SMS yuborildi" badge
   // without a per-row fetch. Updated live via the sms:status socket event.
   lastSms?: {

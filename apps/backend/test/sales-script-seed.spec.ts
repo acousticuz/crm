@@ -40,12 +40,24 @@ describe("Sales script seed (Acoustic eshitish apparatlari)", () => {
     expect(script.sections).toEqual([
       "Salomlashish va tanishtirish",
       "Ehtiyojni aniqlash",
-      "Bepul eshitish tekshiruvini taklif qilish",
+      "Audiometriya tekshiruvini taklif qilish",
       "Mahsulot/xizmat haqida ma'lumot",
       "E'tiroz bilan ishlash",
       "Keyingi qadamni belgilash",
       "Xayrlashish",
     ]);
+  });
+
+  // The word "bepul" causes downstream pricing disputes — customers later
+  // claim that paid services were implied to be free. The script must not
+  // promise it. Guidance lines may mention the word as an instruction to
+  // operators (e.g. "don't say bepul"), but the customer-facing `text` field
+  // — what the operator is scored against saying — must stay clean.
+  it("does not promise 'bepul' anywhere in operator-facing text", () => {
+    expect(script.sections.join(" ").toLowerCase()).not.toContain("bepul");
+    for (const c of script.criteria) {
+      expect(c.text.toLowerCase()).not.toContain("bepul");
+    }
   });
 
   it("has one criterion per section, each with non-empty text + guidance", () => {
@@ -63,7 +75,7 @@ describe("Sales script seed (Acoustic eshitish apparatlari)", () => {
     );
     expect(scoresBySection["Salomlashish va tanishtirish"]).toBe(10);
     expect(scoresBySection["Ehtiyojni aniqlash"]).toBe(20);
-    expect(scoresBySection["Bepul eshitish tekshiruvini taklif qilish"]).toBe(15);
+    expect(scoresBySection["Audiometriya tekshiruvini taklif qilish"]).toBe(15);
     expect(scoresBySection["Mahsulot/xizmat haqida ma'lumot"]).toBe(20);
     expect(scoresBySection["E'tiroz bilan ishlash"]).toBe(15);
     expect(scoresBySection["Keyingi qadamni belgilash"]).toBe(15);

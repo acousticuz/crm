@@ -45,19 +45,24 @@ function toShared(s: string): SmsStatus {
 /**
  * Integration SMS config uses generic field names (login, password, sender).
  * Each provider adapter expects its own names — translate here so the saved
- * credentials reach the right adapter fields. Eskiz no longer accepts an
- * apiKey — the long-lived JWT is fetched / refreshed automatically by
- * EskizSmsAdapter.
+ * credentials reach the right adapter fields. Eskiz uses email + secret key;
+ * older rows may still store that secret under apiKey.
  */
 function mapSmsConfigToAdapter(
   provider: string,
   cfg: Record<string, unknown>,
 ): Record<string, unknown> {
-  const login = cfg.login != null ? String(cfg.login) : undefined;
-  const password = cfg.password != null ? String(cfg.password) : undefined;
-  const sender = cfg.sender != null ? String(cfg.sender) : undefined;
+  const login = cfg.login != null ? String(cfg.login) : cfg.email != null ? String(cfg.email) : undefined;
+  const password =
+    cfg.password != null ? String(cfg.password) : cfg.apiKey != null ? String(cfg.apiKey) : undefined;
+  const sender = cfg.sender != null ? String(cfg.sender) : cfg.from != null ? String(cfg.from) : undefined;
   if (provider === "eskiz") {
-    return { ...cfg, email: login, password, from: sender };
+    return {
+      ...cfg,
+      ...(login !== undefined ? { email: login } : {}),
+      ...(password !== undefined ? { password } : {}),
+      ...(sender !== undefined ? { from: sender } : {}),
+    };
   }
   if (provider === "playmobile") {
     return { ...cfg, login, password, originator: sender };

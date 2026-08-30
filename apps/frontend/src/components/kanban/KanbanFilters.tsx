@@ -36,11 +36,12 @@ export function KanbanFilters({ pipelines, tags, users, filters, onChange }: Pro
   }).length;
 
   return (
-    <div className="space-y-3 rounded-lg border bg-card p-3 shadow-xs">
+    // Soft Modern filter bar — white card surface, card shadow at rest.
+    <div className="space-y-3 rounded-lg border bg-card p-4 shadow-card">
       {/* Primary row — pipeline + search + quick actions. */}
       <div className="flex flex-wrap items-center gap-2">
         <select
-          className="h-9 min-w-[160px]"
+          className="h-10 min-w-[180px]"
           value={filters.pipelineId ?? ""}
           onChange={(e) => patch({ pipelineId: e.target.value || undefined })}
           aria-label="Voronka"
@@ -184,9 +185,7 @@ export function KanbanFilters({ pipelines, tags, users, filters, onChange }: Pro
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-2xs font-medium uppercase tracking-wider text-muted-foreground">
-        {label}
-      </span>
+      <span className="eyebrow">{label}</span>
       {children}
     </label>
   );

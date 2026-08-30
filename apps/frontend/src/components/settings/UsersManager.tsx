@@ -3,7 +3,6 @@ import { Download, Loader2, Pencil, Phone, Trash2, UserPlus } from "lucide-react
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import {
   useCreateUser,
@@ -126,6 +125,9 @@ export function UsersManager(): JSX.Element {
           id: editingId,
           data: {
             fullName: form.fullName,
+            // Email only goes on the wire when it actually changed — keeps
+            // the backend's collision check cheap and the audit log clean.
+            ...(form.email ? { email: form.email } : {}),
             role: form.role,
             extension: form.extension,
             branchId: form.branchId || undefined,
@@ -194,7 +196,7 @@ export function UsersManager(): JSX.Element {
           </div>
           {importResult.created.length > 0 ? (
             <>
-              <p className="mb-2 text-xs text-amber-600">
+              <p className="mb-2 text-xs font-medium text-warning">
                 Vaqtinchalik parollar faqat hozir ko'rsatiladi — saqlab oling va operatorlarga
                 yetkazing. Keyin har bir xodimni tahrirlab parolni o'zgartiring.
               </p>
@@ -240,12 +242,25 @@ export function UsersManager(): JSX.Element {
             <Field label="To'liq ism">
               <Input value={form.fullName} onChange={(e) => set("fullName", e.target.value)} />
             </Field>
-            <Field label="Email">
+            <Field
+              label={isEditing ? "Email (login)" : "Email"}
+              hint={
+                isEditing
+                  ? "Xodim shu manzil bilan kiradi. O'zgartirsangiz darhol amal qiladi."
+                  : undefined
+              }
+            >
               <Input
                 type="email"
                 value={form.email}
-                disabled={isEditing}
                 onChange={(e) => set("email", e.target.value)}
+                placeholder={
+                  isEditing
+                    ? form.email.includes("@acoustic-")
+                      ? "haqiqiy@email.uz (FreePBX import'idan o'zgartiring)"
+                      : undefined
+                    : undefined
+                }
               />
             </Field>
             <Field label={isEditing ? "Yangi parol (bo'sh = o'zgarmaydi)" : "Parol"}>
@@ -361,9 +376,16 @@ export function UsersManager(): JSX.Element {
                     )}
                   </td>
                   <td className="px-3 py-2">
-                    <Badge color={u.status === "ACTIVE" ? "#16a34a" : "#64748b"}>
+                    <span
+                      className={
+                        "inline-flex items-center rounded-full px-2 py-px font-mono text-2xs font-medium uppercase tracking-wider " +
+                        (u.status === "ACTIVE"
+                          ? "bg-success/15 text-success"
+                          : "bg-muted text-muted-foreground")
+                      }
+                    >
                       {u.status === "ACTIVE" ? "Faol" : "O'chirilgan"}
-                    </Badge>
+                    </span>
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex justify-end gap-1">
@@ -397,11 +419,20 @@ export function UsersManager(): JSX.Element {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="space-y-1">
       <Label className="text-xs">{label}</Label>
       {children}
+      {hint && <p className="text-2xs text-muted-foreground">{hint}</p>}
     </div>
   );
 }

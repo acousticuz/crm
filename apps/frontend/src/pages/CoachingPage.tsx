@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Meter } from "@/components/ui/meter";
 import { useCoaching } from "@/hooks/useAnalytics";
 
 /**
@@ -23,43 +24,59 @@ export function CoachingPage(): JSX.Element {
   });
 
   return (
-    <div className="space-y-5">
-      <div>
+    <div className="space-y-6">
+      <div className="space-y-2">
         <Button asChild variant="ghost" size="sm" className="-ml-2">
           <Link to="/dashboard">
-            <ArrowLeft className="mr-1 h-4 w-4" />
+            <ArrowLeft className="h-4 w-4" />
             Boshqaruv paneli
           </Link>
         </Button>
-        <h1 className="text-2xl font-semibold">Murabbiylik hisobot</h1>
+        <div>
+          <p className="eyebrow mb-1">Murabbiylik</p>
+          <h1 className="font-display text-3xl font-semibold tracking-tightish text-foreground">
+            Murabbiylik hisobot
+          </h1>
+        </div>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border bg-card p-3">
+      <div className="card-surface flex flex-wrap items-end gap-3 p-4">
         <div>
-          <Label className="text-xs">Dan</Label>
+          <Label className="text-2xs uppercase tracking-wider">Sanadan</Label>
           <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
         </div>
         <div>
-          <Label className="text-xs">Gacha</Label>
+          <Label className="text-2xs uppercase tracking-wider">Sanagacha</Label>
           <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
         </div>
       </div>
 
-      {isLoading && <p className="text-sm text-muted-foreground">Yuklanmoqda...</p>}
+      {isLoading && (
+        <p className="text-sm text-muted-foreground">Yuklanmoqda...</p>
+      )}
       {data && (
         <>
-          <div className="rounded-lg border bg-card p-4">
-            <h2 className="text-lg font-semibold">
-              {data.operator.fullName}
-              {data.operator.extension && (
-                <span className="ml-2 text-sm font-normal text-muted-foreground">
-                  ({data.operator.extension})
-                </span>
-              )}
-            </h2>
-            <div className="mt-2 grid gap-3 sm:grid-cols-3">
+          <SectionCard
+            title={
+              <>
+                {data.operator.fullName}
+                {data.operator.extension && (
+                  <span className="ml-2 font-mono text-sm font-normal text-muted-foreground">
+                    ({data.operator.extension})
+                  </span>
+                )}
+              </>
+            }
+            subtitle="Operator umumiy ko'rsatkichi"
+          >
+            <div className="grid gap-3 sm:grid-cols-3">
               <Tile label="Qo'ng'iroqlar" value={data.totalCalls} />
-              <Tile label="O'rtacha QA" value={`${data.avgQaScore}%`} />
+              <Tile
+                label="O'rtacha QA"
+                value={data.avgQaScore}
+                unit="%"
+                meter={Number(data.avgQaScore) || undefined}
+              />
               <Tile
                 label="Eng zaif bo'lim"
                 value={data.weakestSections[0]?.section ?? "—"}
@@ -70,87 +87,133 @@ export function CoachingPage(): JSX.Element {
                 }
               />
             </div>
-          </div>
+          </SectionCard>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <section className="rounded-lg border bg-card p-4">
-              <h3 className="mb-2 text-sm font-semibold">Eng zaif bo'limlar</h3>
+            <SectionCard title="Eng zaif bo'limlar" subtitle={`${data.weakestSections.length} ta`}>
               {data.weakestSections.length === 0 ? (
                 <p className="text-xs text-muted-foreground">Ma'lumot yo'q.</p>
               ) : (
-                <ul className="space-y-1 text-sm">
+                <ul className="space-y-2 text-sm">
                   {data.weakestSections.map((s) => (
                     <li
                       key={s.section}
-                      className="flex items-center justify-between rounded border bg-background p-2"
+                      className="rounded-md border bg-card p-3 shadow-xs"
                     >
-                      <span>{s.section}</span>
-                      <span className="text-xs">
-                        <strong>{s.passRate}%</strong> ({s.samples} ta)
-                      </span>
+                      <div className="flex items-baseline justify-between gap-3">
+                        <span className="font-medium text-foreground">{s.section}</span>
+                        <span className="font-mono text-xs text-muted-foreground">
+                          <strong className="text-foreground">{s.passRate}%</strong> · {s.samples} ta
+                        </span>
+                      </div>
+                      <Meter
+                        value={Number(s.passRate) || 0}
+                        tone="destructive"
+                        className="mt-2"
+                      />
                     </li>
                   ))}
                 </ul>
               )}
-            </section>
+            </SectionCard>
 
-            <section className="rounded-lg border bg-card p-4">
-              <h3 className="mb-2 text-sm font-semibold">Eng tez-tez xatoliklar</h3>
+            <SectionCard title="Eng tez-tez xatoliklar" subtitle={`${data.topMistakes.length} ta`}>
               {data.topMistakes.length === 0 ? (
                 <p className="text-xs text-muted-foreground">Xatolik aniqlanmagan.</p>
               ) : (
-                <ul className="space-y-1 text-sm">
+                <ul className="space-y-2 text-sm">
                   {data.topMistakes.map((m, i) => (
-                    <li key={i} className="rounded border bg-background p-2">
-                      <div className="flex items-center justify-between">
-                        <strong>{m.section}</strong>
-                        <span className="text-xs">×{m.count}</span>
+                    <li key={i} className="rounded-md border bg-card p-3 shadow-xs">
+                      <div className="flex items-center justify-between gap-3">
+                        <strong className="text-foreground">{m.section}</strong>
+                        <span className="font-mono text-xs text-muted-foreground">×{m.count}</span>
                       </div>
-                      <p className="mt-0.5 text-xs text-muted-foreground">{m.message}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{m.message}</p>
                     </li>
                   ))}
                 </ul>
               )}
-            </section>
+            </SectionCard>
           </div>
 
-          <section className="rounded-lg border bg-card p-4">
-            <h3 className="mb-2 text-sm font-semibold">QA trend (haftalik)</h3>
+          <SectionCard title="QA trend" subtitle="Haftalik">
             {data.trend.length === 0 ? (
               <p className="text-xs text-muted-foreground">Trend uchun yetarli ma'lumot yo'q.</p>
             ) : (
-              <table className="w-full text-sm">
-                <thead className="text-left text-xs uppercase text-muted-foreground">
-                  <tr>
-                    <th className="pb-2">Hafta</th>
-                    <th>Qo'ng'iroqlar</th>
-                    <th>O'rtacha QA</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.trend.map((t) => (
-                    <tr key={t.week} className="border-t">
-                      <td className="py-1.5">{t.week}</td>
-                      <td>{t.calls}</td>
-                      <td>{t.avgQaScore}%</td>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr>
+                      <th>Hafta</th>
+                      <th>Qo'ng'iroqlar</th>
+                      <th>O'rtacha QA</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {data.trend.map((t) => (
+                      <tr key={t.week}>
+                        <td className="font-mono text-foreground">{t.week}</td>
+                        <td className="font-mono">{t.calls}</td>
+                        <td className="font-mono font-semibold text-foreground">
+                          {t.avgQaScore}%
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
-          </section>
+          </SectionCard>
         </>
       )}
     </div>
   );
 }
 
-function Tile({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
+function SectionCard({
+  title,
+  subtitle,
+  children,
+}: {
+  title: React.ReactNode;
+  subtitle?: string;
+  children: React.ReactNode;
+}): JSX.Element {
   return (
-    <div className="rounded-md border bg-background p-3">
-      <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="mt-1 text-xl font-semibold">{value}</p>
-      {sub && <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>}
+    <section className="card-surface p-5">
+      <header className="mb-4 flex items-baseline justify-between gap-3">
+        <h2 className="font-display text-base font-semibold tracking-tightish text-foreground">
+          {title}
+        </h2>
+        {subtitle && <span className="eyebrow">{subtitle}</span>}
+      </header>
+      {children}
+    </section>
+  );
+}
+
+function Tile({
+  label,
+  value,
+  unit,
+  sub,
+  meter,
+}: {
+  label: string;
+  value: string | number;
+  unit?: string;
+  sub?: string;
+  meter?: number;
+}): JSX.Element {
+  return (
+    <div className="rounded-md border bg-card p-3 shadow-xs">
+      <p className="eyebrow">{label}</p>
+      <p className="mt-1 flex items-baseline gap-1 font-mono text-2xl font-semibold leading-none text-foreground">
+        <span>{value}</span>
+        {unit && <span className="text-sm font-medium text-muted-foreground">{unit}</span>}
+      </p>
+      {typeof meter === "number" && <Meter value={meter} className="mt-2" />}
+      {sub && <p className="mt-1.5 text-xs text-muted-foreground">{sub}</p>}
     </div>
   );
 }

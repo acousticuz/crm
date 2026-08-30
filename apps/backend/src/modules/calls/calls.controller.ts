@@ -103,6 +103,8 @@ export class CallsController {
     @Query("recent") recent?: string,
     @Query("limit") limit?: string,
     @Query("missedOnly") missedOnly?: string,
+    @Query("dateFrom") dateFrom?: string,
+    @Query("dateTo") dateTo?: string,
   ) {
     if (cardId) return this.calls.listByCard(cardId);
     if (contactId) return this.calls.listByContact(contactId);
@@ -110,6 +112,8 @@ export class CallsController {
       return this.calls.listRecent({
         limit: limit ? Number(limit) : undefined,
         missedOnly: missedOnly === "true" || missedOnly === "1",
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
       });
     }
     return [];

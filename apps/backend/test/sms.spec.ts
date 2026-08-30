@@ -363,6 +363,28 @@ describe("M5 — SMS adapters, templates, rate limit, trigger action", () => {
         fetchSpy.mockRestore();
       }
     }
+
+    const fetchSpy = jest.spyOn(global, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          result: [
+            {
+              id: 44,
+              template: "Filial haqida ma'lumot",
+              original_text: "Filial haqida ma'lumot: https://example.uz/location",
+              status: "service",
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    try {
+      const out = await eskiz.fetchTemplates({ email: "x", password: "y" }, { tenantId });
+      expect(out[0].body).toBe("Filial haqida ma'lumot: https://example.uz/location");
+    } finally {
+      fetchSpy.mockRestore();
+    }
     // Cleanup the seeded JWT row so later tests start clean.
     await prisma.eskizTokenCache.deleteMany({ where: { tenantId } });
   });

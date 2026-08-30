@@ -20,6 +20,7 @@ import { PlayMobileSmsAdapter } from "../src/modules/sms/adapters/playmobile.ada
 import { TriggersService } from "../src/modules/triggers/triggers.service";
 import { TriggerEngine } from "../src/modules/triggers/trigger.engine";
 import { CallsService } from "../src/modules/calls/calls.service";
+import { ContactsService } from "../src/modules/contacts/contacts.service";
 import { writeContext } from "../src/common/tenant-context";
 
 // ENCRYPTION_KEY must be set before crypto is first used.
@@ -55,6 +56,7 @@ describe("Integrations wired into runtime — saved config drives behavior", () 
         RealtimeService,
         IntegrationsService,
         TelegramNotifierService,
+        ContactsService,
         InboxService,
         SmsService,
         SmsAdapterFactory,

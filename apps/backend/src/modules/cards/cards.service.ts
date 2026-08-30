@@ -99,10 +99,24 @@ export class CardsService {
     // Two filter shapes: single branchId (legacy / single-select) OR
     // branchIds array (multi-select from the new Kanban filter bar). Array
     // wins when both are present so multi-select takes precedence.
-    if (query.branchIds && query.branchIds.length > 0) {
-      where.branchId = { in: query.branchIds };
-    } else if (query.branchId) {
-      where.branchId = query.branchId;
+    //
+    // Match semantics: a card belongs to the branch filter when EITHER
+    // (a) Card.branchId itself matches — the lead is owned by that branch,
+    // OR (b) any of the card's calls is tagged with that branch — the
+    // customer asked about that branch on a call. Without (b), operators who
+    // attach a branch via the per-call dropdown saw their cards disappear
+    // from the filter, since Card.branchId was still null.
+    const selectedBranchIds =
+      query.branchIds && query.branchIds.length > 0
+        ? query.branchIds
+        : query.branchId
+          ? [query.branchId]
+          : null;
+    if (selectedBranchIds) {
+      where.OR = [
+        { branchId: { in: selectedBranchIds } },
+        { calls: { some: { branchId: { in: selectedBranchIds }, deletedAt: null } } },
+      ];
     }
     if (query.tagId) where.cardTags = { some: { tagId: query.tagId } };
     if (query.source) where.contact = { source: query.source };
@@ -164,6 +178,7 @@ export class CardsService {
     const items = rows.map((card) => ({
       ...card,
       hasMissedCall: card.calls.some((c) => c.status === "MISSED"),
+      lastCall: card.calls[0] ?? null,
       lastSms: card.smsLogs[0] ?? null,
     }));
     return { items, total, page, pageSize };
@@ -270,6 +285,10 @@ export class CardsService {
         : targetStage.type === StageType.LOST
           ? "LOST"
           : "OPEN";
+    if (targetStage.type === StageType.LOST && !dto.lostReason?.trim()) {
+      throw new BadRequestException("Yo'qotilgan karta uchun sabab tanlash kerak");
+    }
+    const lostReason = dto.lostReason?.trim() ?? null;
     const updated = await this.prisma.t.card.update({
       where: { id },
       data: {
@@ -277,7 +296,7 @@ export class CardsService {
         enteredStageAt: new Date(),
         status: nextStatus,
         lostReason:
-          targetStage.type === StageType.LOST ? (dto.lostReason ?? null) : null,
+          targetStage.type === StageType.LOST ? lostReason : null,
       },
     });
     this.realtime.toTenant(tenantId, SOCKET_EVENTS.CARD_MOVED, {

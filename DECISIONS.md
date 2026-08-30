@@ -110,7 +110,7 @@ Konteyner ichidagi portlar standart. Host portlari `.env` orqali boshqariladi.
 ---
 
 ## §13. Default super-admin credentials — dev only
-**Qaror:** Seed default email `admin@acoustic.local`, parol `ChangeMe!2026`. `SUPERADMIN_EMAIL` va `SUPERADMIN_PASSWORD` env orqali override qilinadi.
+**Qaror:** Seed default email `admin@acoustic.local`, parol `Acoustic4114`. `SUPERADMIN_EMAIL` va `SUPERADMIN_PASSWORD` env orqali override qilinadi. Acoustic demo userlari ham default holatda `Acoustic4114` bilan reset qilinadi.
 
 **Sabab:** Lokal dev'ni boshlash uchun bo'sh seed bo'lishi kerak. **Prod muhitda majburiy override**: deploy skriptida `SUPERADMIN_PASSWORD` set bo'lmasa, build to'xtaydi (M11 da implementatsiya). Hozircha PROGRESS.md ochiq savollarda eslatma bor.
 
@@ -417,6 +417,88 @@ Operator drafni tahrirlasa va approve qilsa, **qayta sensitivity tekshiriladi** 
 **Qaror:** `PipelinesService.deleteStage` endi kartalarni rad etish o'rniga boshqa stage'ga ko'chiradi: explicit `reassignTo` query param, yoki birinchi NORMAL stage (order bo'yicha), yoki har qanday qolgan stage. Faqat pipeline'ning oxirgi stage'i bo'lsa rad etadi (ko'chirish uchun joy yo'q).
 
 **Sabab:** CALL_FIXES #3 — "ustun o'chirilsa kartalar yo'qolmaydi". Avvalgi xulq (kartalar bo'lsa 400) admin uchun blokirovka edi. Endi xavfsiz: o'chirish + ko'chirish bitta amalda, `movedCards`/`movedToStageId` qaytariladi (UI ogohlantirishi uchun). Pipeline/stage mutatsiyalari `pipeline:updated` Socket.io event chiqaradi — Kanban real-time yangilanadi.
+
+---
+
+## §57. voice-ai-worker — separate process, AGI not AMI — Voice-AI
+**Qaror:** Real-time AI telefon yordamchisi alohida workspace paketi
+`apps/voice-ai-worker` sifatida qo'shildi. Telephony-worker (AMI) bilan
+parallel yashaydi: AMI **passiv** (event tinglaydi, qo'ng'iroq oqimini ko'radi);
+AGI **aktiv** (qo'ng'iroq dialplan'da `AGI(agi://…)` ga yetganda boshlanadi va
+suhbatni dialplan ichida boshqaradi). Bitta protokol ikkalasini ham qoplay
+olmaydi — AMI multiplexed event stream, AGI har bir qo'ng'iroq uchun alohida
+TCP ulanishi va sinxron command/response.
+
+**Sabab:** `acoustic_voice_ai_prompt.md` haqiqiy IVR talab qiladi — bu
+faqat dialplan ichida boshqarilishi mumkin. AMI orqali Originate qilish
+mumkin emas, chunki biz **kiruvchi** qo'ng'iroqni jonli ushlab turishimiz
+kerak. Alohida process: (a) Asterisk yaqinida turishi mumkin (latency uchun),
+(b) Google STT/TTS gRPC kanallari telephony-worker'ning AMI loopiga aralashmasligi.
+
+---
+
+## §58. AGI without `asterisk-agi` — minimal in-tree parser — Voice-AI
+**Qaror:** `asterisk-agi` npm paketi qo'shilmadi. AGI protokoli kichik
+(env headers `\n\n` terminator, command/response satr-bo'yicha) — to'g'ridan-to'g'ri
+`apps/voice-ai-worker/src/agi/agi-protocol.ts`'da implement qilindi. Node
+`net.Socket` orqali listener, response parsing regex bilan.
+
+**Sabab:** Kodning ustidan to'liq nazorat — testlash oson (`node:test`
+suite), monorepo dependency budget'iga zarar yetmaydi, version pin qilish
+shart emas. Mavjud `telephony-worker`'da `asterisk-manager` ishlatiladi
+(AMI uchun) — AGI uchun shu darajada protokol kichik.
+
+---
+
+## §59. Real-time STT via gRPC streaming, not batch HTTP — Voice-AI
+**Qaror:** voice-ai-worker `@google-cloud/speech` paketi orqali
+`streamingRecognize` gRPC stream ishlatadi. ai-worker'dagi `GoogleSttAdapter`
+(batch HTTP `v1/speech:recognize`) qayta ishlatilmadi.
+
+**Sabab:** Jonli suhbat har turn'dan keyin 1.5–3 s ichida javob talab qiladi.
+Batch HTTP bitta turn uchun ~1–2 s qo'shadi (audio uploadlash + JSON parsing).
+Streaming gRPC interim results bilan birga `singleUtterance`/`isFinal` event'larini
+chunklar kelishi bilan qaytaradi — VAD bilan birgalikda <500 ms javob beradi.
+ai-worker batch yondashuvi after-the-fact tahlilda hali ham eng arzon
+(big-file recognize bitta chaqiruvda, retry oson) — uni almashtirmaymiz.
+
+---
+
+## §60. CRM integration via existing endpoints only — Voice-AI
+**Qaror:** voice-ai-worker `acoustic_db`'ga to'g'ridan-to'g'ri **yozmaydi**.
+CRM'ga ma'lumot uzatish faqat mavjud HTTP endpoint'lar orqali:
+  1. `POST /api/v1/internal/calls/started` (X-Worker-Secret)
+  2. `POST /api/v1/internal/calls/completed` (X-Worker-Secret)
+  3. (Optional) `POST /api/v1/leads/webhook/:tenantId/voice-ai`
+     (X-Webhook-Secret, tenant'ning saqlangan webhookSecret'i bilan)
+
+Backend tomondan **yangi endpoint qo'shilmadi**. Yangi modul yo'q.
+
+**Sabab:** §54 ga ko'ra noma'lum kiruvchi raqamlar uchun "Noma'lum" Contact
+avtomatik yaratiladi va Card pipeline'ga tushadi — voice-ai uchun ham bir
+xil oqim. Backend'da yangi Note/Lead controller qo'shish boshlang'ich MVP
+uchun keraksiz; webhook lead intake allaqachon ixtiyoriy strukturada
+`rawData` JSON qabul qiladi (city/branch/issue/preferred_time bevosita
+saqlanadi va operator Lead detail'da ko'radi). Cross-cutting concern:
+Telegram notifier voice-ai uchun **alohida** bot orqali yuboriladi (env-driven)
+— CRM'ning TELEGRAM Integration'i operator panellaridan triggered notification
+uchun, voice-ai esa real-time call summary uchun (ikkala maqsad turli).
+
+---
+
+## §61. Per-turn RECORD FILE, not AudioSocket — Voice-AI
+**Qaror:** Har bir customer turn `RECORD FILE … sln16 maxDuration silenceSeconds`
+orqali alohida fayl sifatida yoziladi, keyin Google STT streaming'ga
+yuboriladi. AudioSocket / chan_audiosocket / EAGI FD3 ishlatilmadi.
+
+**Sabab:** AudioSocket / chan_audiosocket — alohida Asterisk modul, ko'pchilik
+FreePBX serverlarida built-in emas, qo'shimcha sozlash kerak. EAGI faqat
+lokal AGI'da (FD 3) audio beradi — TCP AGI'da bu yo'q. RECORD FILE — har joyda
+ishlaydigan AGI command, fail mode oddiy (fayl yo'q bo'lsa STT bo'sh qaytaradi).
+Trade-off: turn-based (full-duplex emas), barge-in yo'q — mijoz AI gapirayotganida
+to'xtata olmaydi. Bu MVP uchun maqbul (Acoustic talab qilgan use case — callback
+intake formasidek qisqa turn'lar). Bidirectional streaming uchun keyingi
+iteratsiyada AudioSocket'ga ko'tarish mumkin (interfaces tayyor).
 
 ---
 

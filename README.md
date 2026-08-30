@@ -71,20 +71,21 @@ pnpm --filter @acoustic-crm/backend prisma:seed             # super-admin
 pnpm --filter @acoustic-crm/backend prisma:seed-acoustic    # Acoustic demo tenant
 ```
 
-### 5. Servislarni ishga tushirish (4 ta terminal yoki tmux)
+### 5. Servislarni ishga tushirish
+
+Doimiy ishlash uchun PM2 backend/workerlarni yuritadi, frontend esa Nginx orqali bitta portda beriladi.
 
 ```bash
-pnpm dev:backend         # http://localhost:3005
-pnpm dev:frontend        # http://localhost:5173
-pnpm --filter @acoustic-crm/telephony-worker dev
-pnpm --filter @acoustic-crm/ai-worker dev
+docker compose up -d postgres redis minio
+pnpm build
+pm2 start ecosystem.config.cjs
 ```
 
 ### 6. Brauzerda
 
-- **Admin:** http://localhost:5173 — `admin@acoustic.uz` / `ChangeMe!2026`
-- **Swagger:** http://localhost:3005/api/docs
-- **Health:** http://localhost:3005/health
+- **Admin:** http://localhost:8082 — `admin@acoustic.uz` / `Acoustic4114`
+- **Swagger:** http://localhost:8082/api/docs
+- **Health:** http://localhost:8082/health
 
 ## Test
 
@@ -147,8 +148,8 @@ So'nggi 14 kunlik dumplar `./backups/acoustic-*.sql.gz` da saqlanadi.
 
 | Xizmat | Dev host | Prod (containerda) |
 |---|---|---|
-| Backend | 3005 | 3001 (internal) |
-| Frontend | 5173 | 80 (internal, nginx orqali) |
+| Backend | 3005 (ichki, browser uchun emas) | 3001 (internal) |
+| Frontend + API public kirish | 8082 | 80 / 443 |
 | Telephony-worker | 3008 | 3008 (internal) |
 | ai-worker | — | — |
 | Postgres | 5435 | 5432 (internal) |
@@ -182,6 +183,7 @@ So'nggi 14 kunlik dumplar `./backups/acoustic-*.sql.gz` da saqlanadi.
 | `pnpm prisma:generate` / `prisma:migrate` | Prisma |
 | `pnpm prisma:seed` | Super-admin |
 | `pnpm prisma:seed-acoustic` | Acoustic demo tenant |
+| `pnpm --filter @acoustic-crm/backend reset:user-passwords` | Barcha aktiv userlar parolini `Acoustic4114` ga reset qiladi |
 | `./scripts/issue-ssl.sh <domain> <email>` | Let's Encrypt sertifikat |
 | `./scripts/backup-db.sh` | Postgres dump |
 

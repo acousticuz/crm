@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -15,10 +15,12 @@ import {
   YAxis,
 } from "recharts";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { Meter } from "@/components/ui/meter";
 import { useAuth } from "@/lib/auth";
+import { useTheme } from "@/hooks/useTheme";
 import { Link } from "react-router-dom";
+import { tokenColor } from "@/lib/tokens";
 import {
   useBranches,
   useBranchesMonthly,
@@ -30,12 +32,36 @@ import {
 
 const ROLE_SUPERVISOR_OR_BETTER = ["TENANT_ADMIN", "SUPERVISOR", "ANALYST"];
 
-const SENTIMENT_COLORS: Record<string, string> = {
-  positive: "#22c55e",
-  neutral: "#64748b",
-  negative: "#ef4444",
-  mixed: "#f59e0b",
-};
+/** Resolve chart colors from CSS variables and re-read them whenever the
+ *  theme flips so recharts re-themes alongside the rest of the UI. The hook
+ *  depends on the live theme value from useTheme(), which fires a re-render
+ *  on every toggle. */
+function useChartTokens() {
+  const { theme } = useTheme();
+  const [palette, setPalette] = useState({
+    primary: "#1f6b7a",
+    success: "#3aa17e",
+    info: "#3083c2",
+    warning: "#d68b1e",
+    destructive: "#cc4040",
+    muted: "#6a7587",
+    grid: "#dcd9d2",
+    foreground: "#1b2433",
+  });
+  useEffect(() => {
+    setPalette({
+      primary: tokenColor("--primary"),
+      success: tokenColor("--success"),
+      info: tokenColor("--info"),
+      warning: tokenColor("--warning"),
+      destructive: tokenColor("--destructive"),
+      muted: tokenColor("--muted-foreground"),
+      grid: tokenColor("--border"),
+      foreground: tokenColor("--foreground"),
+    });
+  }, [theme]);
+  return palette;
+}
 
 export function DashboardPage(): JSX.Element {
   const { user } = useAuth();
@@ -50,36 +76,69 @@ export function DashboardPage(): JSX.Element {
   const { data: branches } = useBranches(range);
   const { data: branchesMonthly } = useBranchesMonthly();
   const { data: criteria } = useWeakestCriteria(range);
+  const palette = useChartTokens();
+
+  // Sentiment slice mapping uses semantic tones (success / muted / destructive
+  // / warning) so a re-theme cascades automatically.
+  const SENTIMENT_TONE: Record<string, string> = useMemo(
+    () => ({
+      positive: palette.success,
+      neutral: palette.muted,
+      negative: palette.destructive,
+      mixed: palette.warning,
+    }),
+    [palette],
+  );
 
   const sentimentSlices = useMemo(() => {
     if (!myKpi) return [];
     return Object.entries(myKpi.sentiment).map(([k, v]) => ({ name: k, value: v }));
   }, [myKpi]);
 
+  // Chart axis + tooltip styling derived from tokens so charts inherit the
+  // same paper/ink language as the rest of the page.
+  const axisStyle = { fontSize: 11, fontFamily: "IBM Plex Mono, monospace", fill: palette.muted };
+  const tooltipStyle = {
+    background: "hsl(var(--card))",
+    border: "1px solid hsl(var(--border))",
+    borderRadius: 8,
+    fontSize: 12,
+    boxShadow: "0 6px 14px -4px rgb(15 23 42 / 0.08)",
+    padding: "8px 10px",
+    color: "hsl(var(--foreground))",
+  } as const;
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+    <div className="space-y-7">
+      {/* Page header — title + date range. Range inputs hug the right so the
+          page title carries the eye. */}
+      <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">Boshqaruv paneli</h1>
-          <p className="text-sm text-muted-foreground">
-            {isSupervisor ? "Jamoa + filial KPI ko'rinishi" : "Sizning KPI ko'rsatkichlaringiz"}
+          <p className="eyebrow mb-1.5">Bosh sahifa</p>
+          <h1 className="font-display text-3xl font-semibold tracking-tightish text-foreground">
+            Boshqaruv paneli
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {isSupervisor
+              ? "Jamoa va filial KPI ko'rinishi"
+              : "Sizning KPI ko'rsatkichlaringiz"}
           </p>
         </div>
         <div className="flex items-end gap-2">
           <div>
-            <Label htmlFor="from" className="text-xs text-muted-foreground">
+            <Label htmlFor="from" className="text-2xs uppercase tracking-wider">
               Sanadan
             </Label>
             <Input id="from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="w-36" />
           </div>
           <div>
-            <Label htmlFor="to" className="text-xs text-muted-foreground">
+            <Label htmlFor="to" className="text-2xs uppercase tracking-wider">
               Sanagacha
             </Label>
             <Input id="to" type="date" value={to} onChange={(e) => setTo(e.target.value)} className="w-36" />
           </div>
         </div>
-      </div>
+      </header>
 
       {/* KPI tiles */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -91,214 +150,315 @@ export function DashboardPage(): JSX.Element {
         <KpiTile label="Chiqish qo'ng'iroqlar" value={myKpi?.callsOutbound ?? "—"} />
         <KpiTile
           label="O'rtacha QA ball"
-          value={myKpi ? `${myKpi.avgQaScore}/100` : "—"}
+          value={myKpi ? myKpi.avgQaScore : "—"}
+          unit={myKpi ? "/100" : undefined}
+          meter={typeof myKpi?.avgQaScore === "number" ? myKpi.avgQaScore : undefined}
           sub={`Skript rioya: ${myKpi?.scriptAdherencePct ?? 0}%`}
         />
         <KpiTile
           label="Konversiya"
-          value={myKpi ? `${myKpi.conversionPct}%` : "—"}
+          value={myKpi ? myKpi.conversionPct : "—"}
+          unit={myKpi ? "%" : undefined}
+          meter={typeof myKpi?.conversionPct === "number" ? myKpi.conversionPct : undefined}
           sub={`O'rtacha davomiylik: ${myKpi?.avgDurationSec ?? 0}s`}
         />
       </div>
 
       {/* Trends + sentiment */}
       <div className="grid gap-4 lg:grid-cols-3">
-        <div className="rounded-lg border bg-card p-4 lg:col-span-2">
-          <h2 className="mb-2 text-sm font-semibold">Qo'ng'iroqlar va QA dinamikasi</h2>
-          <ResponsiveContainer width="100%" height={260}>
-            <LineChart data={trends?.items ?? []}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="bucket" />
-              <YAxis yAxisId="left" />
-              <YAxis yAxisId="right" orientation="right" domain={[0, 100]} />
-              <Tooltip />
-              <Legend />
-              <Line yAxisId="left" type="monotone" dataKey="callsInbound" name="Kirish" stroke="#0ea5e9" />
-              <Line yAxisId="left" type="monotone" dataKey="callsOutbound" name="Chiqish" stroke="#22c55e" />
-              <Line yAxisId="right" type="monotone" dataKey="avgQaScore" name="QA ball" stroke="#a855f7" />
+        <ChartCard
+          title="Qo'ng'iroqlar va QA dinamikasi"
+          subtitle="Kunlik"
+          className="lg:col-span-2"
+        >
+          <ResponsiveContainer width="100%" height={280}>
+            <LineChart data={trends?.items ?? []} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+              <CartesianGrid stroke={palette.grid} strokeDasharray="2 4" vertical={false} />
+              <XAxis dataKey="bucket" tick={axisStyle} stroke={palette.grid} />
+              <YAxis yAxisId="left" tick={axisStyle} stroke={palette.grid} />
+              <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tick={axisStyle} stroke={palette.grid} />
+              <Tooltip contentStyle={tooltipStyle} cursor={{ stroke: palette.grid, strokeWidth: 1 }} />
+              <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+              <Line yAxisId="left" type="monotone" dataKey="callsInbound" name="Kirish" stroke={palette.info} strokeWidth={1.75} dot={false} />
+              <Line yAxisId="left" type="monotone" dataKey="callsOutbound" name="Chiqish" stroke={palette.success} strokeWidth={1.75} dot={false} />
+              <Line yAxisId="right" type="monotone" dataKey="avgQaScore" name="QA ball" stroke={palette.primary} strokeWidth={1.75} dot={false} />
             </LineChart>
           </ResponsiveContainer>
-        </div>
-        <div className="rounded-lg border bg-card p-4">
-          <h2 className="mb-2 text-sm font-semibold">Sentiment ulushi</h2>
+        </ChartCard>
+
+        <ChartCard title="Sentiment ulushi" subtitle="Hozirgi davr">
           {sentimentSlices.every((s) => s.value === 0) ? (
-            <p className="py-12 text-center text-sm text-muted-foreground">Ma'lumot yo'q.</p>
+            <p className="py-12 text-center text-sm text-muted-foreground">
+              Hozirgi davr uchun ma'lumot yo'q.
+            </p>
           ) : (
-            <ResponsiveContainer width="100%" height={240}>
+            <ResponsiveContainer width="100%" height={260}>
               <PieChart>
-                <Pie data={sentimentSlices} dataKey="value" nameKey="name" outerRadius={90} label>
+                <Pie
+                  data={sentimentSlices}
+                  dataKey="value"
+                  nameKey="name"
+                  innerRadius={48}
+                  outerRadius={86}
+                  paddingAngle={2}
+                  stroke="hsl(var(--card))"
+                  strokeWidth={2}
+                >
                   {sentimentSlices.map((s) => (
-                    <Cell key={s.name} fill={SENTIMENT_COLORS[s.name] ?? "#64748b"} />
+                    <Cell key={s.name} fill={SENTIMENT_TONE[s.name] ?? palette.muted} />
                   ))}
                 </Pie>
-                <Legend />
+                <Tooltip contentStyle={tooltipStyle} />
+                <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
               </PieChart>
             </ResponsiveContainer>
           )}
-        </div>
+        </ChartCard>
       </div>
 
-      {/* Coaching: weakest/strongest criteria */}
+      {/* Coaching: weakest / strongest criteria */}
       {isSupervisor && (
-        <div className="rounded-lg border bg-card p-4">
-          <h2 className="mb-3 text-sm font-semibold">Murabbiylik fokuslari (mezonlar)</h2>
+        <SectionCard title="Murabbiylik fokuslari" subtitle="Mezonlar bo'yicha">
           <div className="grid gap-4 md:grid-cols-2">
             <CriteriaList title="Eng zaif mezonlar" items={criteria?.weakest ?? []} negative />
             <CriteriaList title="Eng kuchli mezonlar" items={criteria?.strongest ?? []} />
           </div>
-        </div>
+        </SectionCard>
       )}
 
       {/* Team comparison */}
       {isSupervisor && (
-        <div className="rounded-lg border bg-card p-4">
-          <h2 className="mb-3 text-sm font-semibold">Jamoa taqqoslash</h2>
-          <ResponsiveContainer width="100%" height={280}>
+        <SectionCard title="Jamoa taqqoslash" subtitle="Operatorlar bo'yicha">
+          <ResponsiveContainer width="100%" height={300}>
             <BarChart
               data={(team?.items ?? []).map((it) => ({
                 ...it,
-                // Axis labels carry the extension so supervisors can pair a
-                // bar with the voice they recognize ("Aziz (101)").
                 displayName: it.extension ? `${it.fullName} (${it.extension})` : it.fullName,
               }))}
+              margin={{ top: 4, right: 8, left: -16, bottom: 0 }}
             >
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="displayName" interval={0} angle={-20} textAnchor="end" height={80} />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Bar dataKey="avgQaScore" name="QA ball" fill="#a855f7" />
-              <Bar dataKey="conversionPct" name="Konversiya %" fill="#22c55e" />
-              <Bar dataKey="scriptAdherencePct" name="Skript %" fill="#0ea5e9" />
+              <CartesianGrid stroke={palette.grid} strokeDasharray="2 4" vertical={false} />
+              <XAxis
+                dataKey="displayName"
+                interval={0}
+                angle={-22}
+                textAnchor="end"
+                height={86}
+                tick={{ ...axisStyle, fontFamily: "IBM Plex Sans, sans-serif" }}
+                stroke={palette.grid}
+              />
+              <YAxis tick={axisStyle} stroke={palette.grid} />
+              <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "hsl(var(--surface))" }} />
+              <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+              <Bar dataKey="avgQaScore" name="QA ball" fill={palette.primary} radius={[3, 3, 0, 0]} />
+              <Bar dataKey="conversionPct" name="Konversiya %" fill={palette.success} radius={[3, 3, 0, 0]} />
+              <Bar dataKey="scriptAdherencePct" name="Skript %" fill={palette.info} radius={[3, 3, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
-        </div>
+        </SectionCard>
       )}
 
       {/* Branches */}
       {isSupervisor && branches?.items && branches.items.length > 0 && (
-        <div className="rounded-lg border bg-card p-4">
-          <h2 className="mb-3 text-sm font-semibold">Filiallar bo'yicha</h2>
-          <table className="w-full text-sm">
-            <thead className="text-left text-xs uppercase text-muted-foreground">
-              <tr>
-                <th className="pb-2">Filial</th>
-                <th>Kirish</th>
-                <th>Chiqish</th>
-                <th>QA</th>
-                <th>Konversiya</th>
-                <th>Skript</th>
-              </tr>
-            </thead>
-            <tbody>
-              {branches.items.map((b) => (
-                <tr key={b.branchId} className="border-t">
-                  <td className="py-1.5 font-medium">{b.name}</td>
-                  <td>{b.callsInbound}</td>
-                  <td>{b.callsOutbound}</td>
-                  <td>{b.avgQaScore}</td>
-                  <td>{b.conversionPct}%</td>
-                  <td>{b.scriptAdherencePct}%</td>
+        <SectionCard title="Filiallar bo'yicha" subtitle={`${branches.items.length} ta filial`}>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr>
+                  <th>Filial</th>
+                  <th>Kirish</th>
+                  <th>Chiqish</th>
+                  <th>QA</th>
+                  <th>Konversiya</th>
+                  <th>Skript</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {branches.items.map((b) => (
+                  <tr key={b.branchId}>
+                    <td className="font-medium text-foreground">{b.name}</td>
+                    <td className="font-mono">{b.callsInbound}</td>
+                    <td className="font-mono">{b.callsOutbound}</td>
+                    <td className="font-mono">{b.avgQaScore}</td>
+                    <td className="font-mono">{b.conversionPct}%</td>
+                    <td className="font-mono">{b.scriptAdherencePct}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
       )}
 
-      {/* Branch monthly funnel — leads / WON / LOST / conversion per branch
-          for the current month. Built off Call.branchId (operator-tagged) so
-          it shows which branch the customer asked about, not just the
-          operator's home branch. */}
+      {/* Branch monthly funnel */}
       {isSupervisor && branchesMonthly && (
-        <div className="rounded-lg border bg-card p-4">
-          <h2 className="mb-3 text-sm font-semibold">
-            Filiallar oylik hisobot ({branchesMonthly.month})
-          </h2>
+        <SectionCard
+          title="Filiallar oylik hisobot"
+          subtitle={branchesMonthly.month}
+        >
           {branchesMonthly.items.length === 0 ? (
             <p className="text-xs text-muted-foreground">
               Hali hech qaysi qo'ng'iroqda filial belgilanmagan. Qo'ng'iroq qatorida "Filial"
               dropdownidan tanlang.
             </p>
           ) : (
-            <table className="w-full text-sm">
-              <thead className="text-left text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th className="pb-2">Filial</th>
-                  <th>Qo'ng'iroq</th>
-                  <th>Lead (raqamlar)</th>
-                  <th>Kartalar</th>
-                  <th>Yutdi</th>
-                  <th>Yo'qotdi</th>
-                  <th>Ochiq</th>
-                  <th>Konversiya</th>
-                </tr>
-              </thead>
-              <tbody>
-                {branchesMonthly.items.map((b) => (
-                  <tr key={b.branchId} className="border-t">
-                    <td className="py-1.5 font-medium">{b.name}</td>
-                    <td>{b.calls}</td>
-                    <td>{b.uniqueLeads}</td>
-                    <td>{b.cards}</td>
-                    <td className="text-emerald-600">{b.won}</td>
-                    <td className="text-destructive">{b.lost}</td>
-                    <td>{b.open}</td>
-                    <td className="font-semibold">{b.conversionPct}%</td>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr>
+                    <th>Filial</th>
+                    <th>Qo'ng'iroq</th>
+                    <th>Lead</th>
+                    <th>Kartalar</th>
+                    <th>Yutdi</th>
+                    <th>Yo'qotdi</th>
+                    <th>Ochiq</th>
+                    <th>Konversiya</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {branchesMonthly.items.map((b) => (
+                    <tr key={b.branchId}>
+                      <td className="font-medium text-foreground">{b.name}</td>
+                      <td className="font-mono">{b.calls}</td>
+                      <td className="font-mono">{b.uniqueLeads}</td>
+                      <td className="font-mono">{b.cards}</td>
+                      <td className="font-mono text-success">{b.won}</td>
+                      <td className="font-mono text-destructive">{b.lost}</td>
+                      <td className="font-mono">{b.open}</td>
+                      <td className="font-mono font-semibold text-foreground">
+                        {b.conversionPct}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
-        </div>
+        </SectionCard>
       )}
 
-      {/* Coaching shortcut — per-operator drilldown. Supervisors click into
-          a specific operator's coaching report. */}
+      {/* Per-operator coaching drilldown */}
       {isSupervisor && team?.items && team.items.length > 0 && (
-        <div className="rounded-lg border bg-card p-4">
-          <h2 className="mb-3 text-sm font-semibold">Murabbiylik (operator bo'yicha)</h2>
-          <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        <SectionCard title="Murabbiylik" subtitle="Operator bo'yicha">
+          <ul className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
             {team.items.map((it) => (
               <li
                 key={it.userId ?? Math.random()}
-                className="rounded-md border bg-background p-2"
+                className="rounded-md border bg-card p-3 transition-colors hover:bg-surface/60"
               >
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate font-medium text-foreground">
                     {it.fullName ?? it.userId}
                     {it.extension && (
-                      <span className="ml-1 text-xs text-muted-foreground">({it.extension})</span>
+                      <span className="ml-1 font-mono text-xs text-muted-foreground">
+                        ({it.extension})
+                      </span>
                     )}
                   </span>
                   {it.userId && (
                     <Link
                       to={`/coaching/${it.userId}`}
-                      className="text-xs text-primary hover:underline"
+                      className="shrink-0 text-xs font-medium text-primary hover:underline"
                     >
                       Ko'rish →
                     </Link>
                   )}
                 </div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  QA: <strong>{it.avgQaScore}</strong> · Konversiya:{" "}
-                  <strong>{it.conversionPct}%</strong>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                  <Metric label="QA" value={it.avgQaScore} />
+                  <Metric label="Konv." value={`${it.conversionPct}%`} />
                 </div>
               </li>
             ))}
           </ul>
-        </div>
+        </SectionCard>
       )}
     </div>
   );
 }
 
-function KpiTile({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
+/** A single KPI tile. Large mono numerals, calm eyebrow, optional sub line and
+ *  inline meter so percentage-style values get a visual anchor. */
+function KpiTile({
+  label,
+  value,
+  unit,
+  sub,
+  meter,
+}: {
+  label: string;
+  value: string | number;
+  unit?: string;
+  sub?: string;
+  meter?: number;
+}): JSX.Element {
   return (
-    <div className="rounded-lg border bg-card p-4">
-      <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="mt-1 text-2xl font-semibold">{value}</p>
-      {sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
+    <div className="stat-tile flex flex-col gap-3">
+      <p className="eyebrow">{label}</p>
+      {/* Plus Jakarta Sans 30px bold per the Soft Modern brief — the metric
+          value is the anchor, everything else recedes. */}
+      <p className="font-display flex items-baseline gap-1.5 text-3xl font-bold leading-none tracking-tight text-foreground">
+        <span>{value}</span>
+        {unit && (
+          <span className="text-md font-semibold text-muted-foreground">{unit}</span>
+        )}
+      </p>
+      {typeof meter === "number" && <Meter value={meter} className="mt-1" />}
+      {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
+    </div>
+  );
+}
+
+/** Section wrapper used by every non-KPI block on the page so all surfaces
+ *  share the same title + chrome rhythm. */
+function SectionCard({
+  title,
+  subtitle,
+  className,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  className?: string;
+  children: React.ReactNode;
+}): JSX.Element {
+  return (
+    <section className={["card-surface p-5", className].filter(Boolean).join(" ")}>
+      <header className="mb-4 flex items-baseline justify-between gap-3">
+        <h2 className="font-display text-base font-semibold tracking-tightish text-foreground">
+          {title}
+        </h2>
+        {subtitle && <span className="eyebrow">{subtitle}</span>}
+      </header>
+      {children}
+    </section>
+  );
+}
+
+/** Wrapper used by the two recharts panels at the top of the page. Adds a
+ *  consistent title row + padding so the charts inherit the same chrome. */
+function ChartCard({
+  title,
+  subtitle,
+  className,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  className?: string;
+  children: React.ReactNode;
+}): JSX.Element {
+  return <SectionCard title={title} subtitle={subtitle} className={className}>{children}</SectionCard>;
+}
+
+function Metric({ label, value }: { label: string; value: string | number }): JSX.Element {
+  return (
+    <div className="flex items-baseline gap-1.5">
+      <span className="font-mono text-2xs uppercase tracking-wider text-muted-foreground">
+        {label}
+      </span>
+      <span className="font-mono font-semibold text-foreground">{value}</span>
     </div>
   );
 }
@@ -311,22 +471,34 @@ function CriteriaList({
   title: string;
   items: Array<{ criterionId: string; text: string; section: string; passRate: number; samples: number }>;
   negative?: boolean;
-}) {
+}): JSX.Element {
   return (
     <div>
-      <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">{title}</p>
+      <p className="eyebrow mb-2">{title}</p>
       {items.length === 0 ? (
         <p className="text-xs text-muted-foreground">Ma'lumot yo'q.</p>
       ) : (
-        <ul className="space-y-1.5">
+        <ul className="space-y-2">
           {items.map((c) => (
-            <li key={c.criterionId} className="rounded border bg-background p-2 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="font-medium">{c.text}</span>
-                <Badge color={negative ? "#ef4444" : "#22c55e"}>{c.passRate}%</Badge>
+            <li key={c.criterionId} className="rounded-md border bg-card p-2.5 text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium text-foreground">{c.text}</span>
+                <span
+                  className={
+                    "font-mono text-xs font-semibold tabular-nums " +
+                    (negative ? "text-destructive" : "text-success")
+                  }
+                >
+                  {c.passRate}%
+                </span>
               </div>
-              <p className="text-xs text-muted-foreground">
-                {c.section} · {c.samples} ta namuna
+              <Meter
+                value={c.passRate}
+                tone={negative ? "destructive" : "success"}
+                className="mt-2"
+              />
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                {c.section} · <span className="font-mono">{c.samples}</span> ta namuna
               </p>
             </li>
           ))}

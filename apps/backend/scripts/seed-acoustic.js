@@ -10,7 +10,7 @@
  *   - QA script "Acoustic standart" with 4 criteria (uz keywords for mock LLM)
  *   - 5 users (tenant-admin, supervisor, 3 operators across branches)
  *
- * Reads ACOUSTIC_TENANT_ADMIN_PASSWORD from env (default: ChangeMe!2026).
+ * Reads ACOUSTIC_TENANT_ADMIN_PASSWORD from env.
  * Output: prints the freshly-generated tenant id + webhook secret + admin email.
  */
 const { PrismaClient } = require("@prisma/client");
@@ -18,7 +18,6 @@ const argon2 = require("argon2");
 const crypto = require("node:crypto");
 
 const TENANT_NAME = "Acoustic";
-
 const BRANCHES = [
   "Chilonzor filiali",
   "Yunusobod filiali",
@@ -101,12 +100,17 @@ const QA_SCRIPT = {
 // follow each step during the call. Sections are also the QA criteria, so
 // supervisor scoring stays anchored to the same wording the operators see.
 // Total maxScore = 100.
+//
+// IMPORTANT: the word "bepul" is intentionally absent from this script.
+// Promising "free" up front creates downstream pricing disputes (customers
+// argue that paid items were implied to be free). The script instead anchors
+// value on expert evaluation, personalization, and a no-obligation visit.
 const SALES_SCRIPT = {
   name: "Sotuv skripti (Acoustic eshitish apparatlari)",
   sections: [
     "Salomlashish va tanishtirish",
     "Ehtiyojni aniqlash",
-    "Bepul eshitish tekshiruvini taklif qilish",
+    "Audiometriya tekshiruvini taklif qilish",
     "Mahsulot/xizmat haqida ma'lumot",
     "E'tiroz bilan ishlash",
     "Keyingi qadamni belgilash",
@@ -141,16 +145,17 @@ const SALES_SCRIPT = {
       ],
     },
     {
-      id: "bepul-tekshiruv",
-      section: "Bepul eshitish tekshiruvini taklif qilish",
+      id: "audiometriya-taklif",
+      section: "Audiometriya tekshiruvini taklif qilish",
       text:
-        "Mijozga yaqin filialdagi bepul audiometriya tekshiruvini taklif qiling — aniq manzil va vaqt aytib.",
+        "Mijozni yaqin filialdagi audiometriya tekshiruviga taklif qiling — aniq manzil va vaqtni belgilab. Tekshiruv qiymati haqida telefonda gapirmang; mutaxassis baholashi va variantlar tanlash imkoniyatiga urg'u bering.",
       maxScore: 15,
-      keywords: ["bepul tekshiruv", "audiometriya", "filial", "tashrif"],
+      keywords: ["audiometriya", "mutaxassis", "filial", "tashrif"],
       guidance: [
-        "\"Sizga yaqin filialimizda audiometriya tekshiruvi BEPUL — bu bizning yangi mijozlarga taklifimiz.\"",
+        "\"Yaqin filialimizda audiolog mutaxassisimiz eshitish darajangizni batafsil baholaydi va sizga mos variantlarni ko'rsatadi.\"",
         "Yaqin filialni ayting (manzil + ish vaqti). Masalan: \"Chilonzor filialimiz, Bunyodkor 12, har kuni 9:00–18:00.\"",
         "Aniq vaqt taklif qiling: \"Ertaga soat 11:00 ga yozaman, sizga qulaymi?\"",
+        "DIQQAT: \"bepul\" so'zini ishlatmang. Bu so'z keyinchalik narx muzokarasida muammoga aylanadi — mijoz pullik xizmatlarni ham \"bepul edi\" deb taqdim etishi mumkin.",
       ],
     },
     {
@@ -175,10 +180,11 @@ const SALES_SCRIPT = {
       maxScore: 15,
       keywords: ["narx", "ishonch", "o'ylab", "kafolat"],
       guidance: [
-        "\"Qimmat\" → \"Tushunaman. Lekin apparatimiz 2 yil kafolatli va imkoniyatlar moslamasi bor.\"",
-        "\"O'ylab ko'raman\" → \"Albatta. Bepul tekshiruvga yozilib qo'ying, qaror keyin qabul qilasiz.\"",
-        "\"Ishonmayman\" → \"Mingdan ortiq mijozimiz bor. Filial tashrifi paytida ko'rsatamiz.\"",
-        "Bahslashmang, mijozni eshiting va xulosa qiling.",
+        "\"Qimmat\" → \"Tushunaman. Apparatlarimiz turli byudjetga mos — filialdagi tekshiruvdan keyin oraliqni ko'rasiz. 2 yil kafolat va to'lov bo'lib-bo'lib variantlari ham bor.\"",
+        "\"O'ylab ko'raman\" → \"Albatta. Tashrif vaqtini yozib qo'ying — qaror keyin qabul qilasiz, hech qanday majburiyat yo'q.\"",
+        "\"Ishonmayman\" → \"Mingdan ortiq mijozimiz bor. Filial tashrifi paytida apparatlarni o'zingiz ko'rib, sinab ko'rishingiz mumkin.\"",
+        "\"Bepul ekanmidi?\" → \"Tashrifda mutaxassis sizning eshitish darajangizni baholaydi va variantlarni ko'rsatadi. Aniq sharoitlar filialda muhokama qilinadi.\"",
+        "Bahslashmang, mijozni eshiting va xulosa qiling. \"Bepul\" so'zini hech qachon va'da qilmang.",
       ],
     },
     {
@@ -220,7 +226,8 @@ const USERS = [
 async function main() {
   const prisma = new PrismaClient();
   try {
-    const adminPassword = process.env.ACOUSTIC_TENANT_ADMIN_PASSWORD || "ChangeMe!2026";
+    const adminPassword = process.env.ACOUSTIC_TENANT_ADMIN_PASSWORD;
+    if (!adminPassword) throw new Error("ACOUSTIC_TENANT_ADMIN_PASSWORD must be set");
 
     let tenant = await prisma.tenant.findFirst({ where: { name: TENANT_NAME } });
     if (!tenant) {
@@ -316,7 +323,22 @@ async function main() {
     const passwordHash = await argon2.hash(adminPassword, { type: argon2.argon2id });
     for (const u of USERS) {
       const existing = await prisma.user.findFirst({ where: { email: u.email } });
-      if (existing) continue;
+      if (existing) {
+        await prisma.user.update({
+          where: { id: existing.id },
+          data: {
+            tenantId: tenant.id,
+            fullName: u.fullName,
+            passwordHash,
+            role: u.role,
+            status: "ACTIVE",
+            deletedAt: null,
+            branchId: u.branchIdx !== null ? branches[u.branchIdx].id : null,
+          },
+        });
+        console.log(`User ${u.email} (${u.role}) password reset`);
+        continue;
+      }
       await prisma.user.create({
         data: {
           tenantId: tenant.id,
@@ -333,7 +355,7 @@ async function main() {
 
     console.log("\n=== Acoustic seed complete ===");
     console.log(`Tenant id: ${tenant.id}`);
-    console.log(`Admin: admin@acoustic.uz / ${adminPassword}`);
+    console.log(`All Acoustic seed users use password: ${adminPassword}`);
     console.log("(set ACOUSTIC_TENANT_ADMIN_PASSWORD env to override the seed password)");
   } finally {
     await prisma.$disconnect();

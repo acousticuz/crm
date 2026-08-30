@@ -23,7 +23,9 @@ import {
   ListThreadsQueryDto,
   RejectDraftDto,
   SendManualMessageDto,
+  LinkThreadPhoneDto,
 } from "./dto/inbox.dto";
+import { ContactsService } from "../contacts/contacts.service";
 
 /**
  * AI draft is intentionally simple — a templated, non-committal reply that
@@ -84,6 +86,7 @@ export class InboxService implements OnModuleInit {
     private readonly audit: AuditService,
     private readonly integrations: IntegrationsService,
     private readonly realtime: RealtimeService,
+    private readonly contacts: ContactsService,
   ) {}
 
   onModuleInit(): void {
@@ -378,12 +381,25 @@ export class InboxService implements OnModuleInit {
       params.set("timeout", "25");
       if (offset) params.set("offset", String(offset));
       const url = `https://api.telegram.org/bot${token}/getUpdates?${params.toString()}`;
-      const res = await fetch(url);
-      if (!res.ok) return { processed: 0 };
-      const json = (await res.json().catch(() => ({}))) as {
+      let res = await fetch(url);
+      let json = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
         result?: TelegramUpdate[];
+        description?: string;
       };
+      if (
+        !res.ok &&
+        /can't use getUpdates method while webhook is active/i.test(json.description ?? "")
+      ) {
+        await fetch(`https://api.telegram.org/bot${token}/deleteWebhook`, { method: "POST" });
+        res = await fetch(url);
+        json = (await res.json().catch(() => ({}))) as {
+          ok?: boolean;
+          result?: TelegramUpdate[];
+          description?: string;
+        };
+      }
+      if (!res.ok || json.ok === false) return { processed: 0 };
       const updates = json.result ?? [];
       for (const u of updates) {
         try {
@@ -590,6 +606,66 @@ export class InboxService implements OnModuleInit {
     });
     if (!thread) throw new NotFoundException("Thread not found");
     return thread;
+  }
+
+  /**
+   * Attach a phone number collected during chat to the conversation contact.
+   * If another contact already owns the phone, link the thread to that contact;
+   * otherwise enrich the current Telegram placeholder contact or create one.
+   */
+  async linkPhoneToThread(threadId: string, dto: LinkThreadPhoneDto) {
+    const { tenantId, userId, role } = this.requireUser();
+    if (![UserRole.OPERATOR, UserRole.SUPERVISOR, UserRole.TENANT_ADMIN].includes(role)) {
+      throw new ForbiddenException("Insufficient role to update contact");
+    }
+    const thread = await this.prisma.inboxThread.findFirst({
+      where: { id: threadId, tenantId, deletedAt: null },
+      include: { contact: true },
+    });
+    if (!thread) throw new NotFoundException("Thread not found");
+
+    const phone = normalizePhone(dto.phone);
+    const existing = await this.contacts.findByPhones([phone], thread.contactId ?? undefined);
+    let contactId = thread.contactId;
+
+    if (existing.length > 0) {
+      contactId = existing[0].id;
+    } else if (thread.contact) {
+      const phones = Array.from(new Set([...(thread.contact.phones ?? []), phone]));
+      await this.prisma.contact.update({
+        where: { id: thread.contact.id },
+        data: {
+          phones,
+          ...(dto.fullName?.trim() ? { fullName: dto.fullName.trim() } : {}),
+        },
+      });
+      contactId = thread.contact.id;
+    } else {
+      const created = await this.prisma.contact.create({
+        data: {
+          tenantId,
+          fullName: dto.fullName?.trim() || "Telegram mijoz",
+          phones: [phone],
+          source: thread.channel,
+        },
+      });
+      contactId = created.id;
+    }
+
+    const updated = await this.prisma.inboxThread.update({
+      where: { id: thread.id },
+      data: { contactId },
+      include: { contact: true, messages: { orderBy: { createdAt: "asc" } } },
+    });
+    await this.audit.log({
+      tenantId,
+      userId,
+      action: "inbox.contact.phone_linked",
+      entityType: "InboxThread",
+      entityId: thread.id,
+      details: { contactId, phone },
+    });
+    return updated;
   }
 
   /** Drafts awaiting any operator review across the tenant. */

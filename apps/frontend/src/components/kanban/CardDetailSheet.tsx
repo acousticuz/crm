@@ -119,6 +119,12 @@ export function CardDetailSheet({ cardId, onClose }: Props): JSX.Element {
               )}
             </SheetHeader>
 
+            {card.status === "LOST" && card.lostReason && (
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                <strong>Yo'qotish sababi:</strong> {card.lostReason}
+              </div>
+            )}
+
             <section className="space-y-2">
               <SectionHeading icon={<Phone className="h-3.5 w-3.5" />} title="Aloqa" />
               <div className="flex flex-wrap gap-2">
@@ -165,7 +171,7 @@ export function CardDetailSheet({ cardId, onClose }: Props): JSX.Element {
                   {/* Eskiz rejects free-text bodies — when the tenant hasn't
                       explicitly enabled allowFreeText, force template choice. */}
                   {smsTemplates.length === 0 ? (
-                    <div className="rounded bg-amber-100 px-2 py-1 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                    <div className="rounded-md border border-warning/30 bg-warning/10 px-2.5 py-1.5 text-xs text-foreground">
                       Hech qanday template yo'q. Settings → SMS xizmati'da "Template'larni
                       sync qilish" tugmasini bosing yoki qo'lda template yarating.
                     </div>
@@ -714,7 +720,14 @@ function CallRow({ call }: CallRowProps): JSX.Element {
           <span className="text-xs text-muted-foreground">
             {format(new Date(call.startedAt), "dd MMM HH:mm")} · {call.duration}s
           </span>
-          {answered && !audioUrl && (
+          {/* Show the "Eshitish" button for any non-MISSED call. We can't tell
+              client-side whether a recording exists on disk (the server's
+              recording-search is a filesystem `find`), so we always offer the
+              button and let the endpoint reply with 404 if there's nothing —
+              the "audio yo'q" message below covers that case. Hiding the
+              button on MISSED keeps clutter off rows that truly never have
+              audio. */}
+          {call.status !== "MISSED" && !audioUrl && (
             <button
               type="button"
               onClick={loadAudio}
@@ -747,7 +760,7 @@ function CallRow({ call }: CallRowProps): JSX.Element {
             </button>
           )}
           {answered && open && state === "analyzing" && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-warning/20 px-2 py-0.5 text-2xs font-medium text-warning">
+            <span className="chip" data-tone="warning">
               <span className="relative inline-flex h-1.5 w-1.5">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-warning opacity-75" />
                 <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-warning" />
@@ -757,7 +770,7 @@ function CallRow({ call }: CallRowProps): JSX.Element {
           )}
           {answered && open && state === "analyzed" && (
             <>
-              <span className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 text-2xs font-medium text-success">
+              <span className="chip" data-tone="success">
                 <CheckCircle2 className="h-3 w-3" />
                 Tahlil tayyor
               </span>
@@ -808,7 +821,7 @@ function CallRow({ call }: CallRowProps): JSX.Element {
                 </div>
               )}
               {state === "analyzing" && (
-                <div className="rounded border border-dashed bg-amber-50 p-2 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                <div className="rounded-md border border-dashed border-warning/40 bg-warning/10 p-2 text-foreground">
                   Tahlil davom etmoqda... Yangi natija avtomatik yangilanadi.
                 </div>
               )}
@@ -847,11 +860,12 @@ function CallRow({ call }: CallRowProps): JSX.Element {
                       <li key={i} className="leading-snug">
                         <span
                           className={
-                            m.severity === "high"
-                              ? "rounded bg-red-200 px-1 text-[10px] font-medium text-red-900 dark:bg-red-950/60 dark:text-red-200"
+                            "rounded px-1.5 py-px font-mono text-2xs font-medium uppercase tracking-wider " +
+                            (m.severity === "high"
+                              ? "bg-destructive/15 text-destructive"
                               : m.severity === "medium"
-                                ? "rounded bg-amber-200 px-1 text-[10px] font-medium text-amber-900 dark:bg-amber-950/60 dark:text-amber-200"
-                                : "rounded bg-slate-200 px-1 text-[10px] font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                                ? "bg-warning/20 text-warning-foreground"
+                                : "bg-muted text-muted-foreground")
                           }
                         >
                           {m.severity}
@@ -884,7 +898,7 @@ function CallRow({ call }: CallRowProps): JSX.Element {
                             {q.criteriaResults.map((cr) => (
                               <li key={cr.criterionId}>
                                 <span
-                                  className={cr.passed ? "text-emerald-600" : "text-destructive"}
+                                  className={cr.passed ? "text-success" : "text-destructive"}
                                 >
                                   {cr.passed ? "✓" : "✗"}
                                 </span>{" "}

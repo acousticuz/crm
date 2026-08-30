@@ -39,7 +39,11 @@ export function useCards(filters: CardFilters) {
     queryFn: async () =>
       (
         await api.get<PageResult<CardListItem>>("/cards", {
-          params: { ...filters, pageSize: 200 },
+          // Kanban shows ALL cards in every stage at once, so cap high enough
+          // that even a months-worth of imports lands in one page. Larger
+          // tenants will eventually want a per-stage paginated load — keep
+          // this in mind when total cards crosses ~5000.
+          params: { ...filters, pageSize: 2000 },
           // Axios default serializes arrays as `branchIds[]=a&branchIds[]=b`.
           // The Nest DTO Transform accepts that out of the box.
           paramsSerializer: { indexes: null },
@@ -87,6 +91,11 @@ export function useSetCallBranch() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["card"] });
       qc.invalidateQueries({ queryKey: ["calls"] });
+      // Backend propagates Call.branchId → Card.branchId (when the card had
+      // none), so the Kanban list query has to refetch — otherwise the
+      // branch filter and the moved chip won't reflect the new value until
+      // a full page reload.
+      qc.invalidateQueries({ queryKey: ["cards"] });
     },
   });
 }
@@ -174,20 +183,30 @@ export function useCardDetail(cardId: string | null) {
 export function useMoveCard() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ cardId, stageId }: { cardId: string; stageId: string }) => {
-      const { data } = await api.patch(`/cards/${cardId}/move`, { stageId });
+    mutationFn: async ({
+      cardId,
+      stageId,
+      lostReason,
+    }: {
+      cardId: string;
+      stageId: string;
+      lostReason?: string;
+    }) => {
+      const { data } = await api.patch(`/cards/${cardId}/move`, { stageId, lostReason });
       return data;
     },
     // Optimistically move the card to the target stage so the board updates
     // instantly; reconcile (or roll back) once the server responds.
-    onMutate: async ({ cardId, stageId }) => {
+    onMutate: async ({ cardId, stageId, lostReason }) => {
       await qc.cancelQueries({ queryKey: ["cards"] });
       const prev = qc.getQueriesData<PageResult<CardListItem>>({ queryKey: ["cards"] });
       for (const [key, data] of prev) {
         if (!data) continue;
         qc.setQueryData<PageResult<CardListItem>>(key, {
           ...data,
-          items: data.items.map((c) => (c.id === cardId ? { ...c, stageId } : c)),
+          items: data.items.map((c) =>
+            c.id === cardId ? { ...c, stageId, lostReason: lostReason ?? c.lostReason } : c,
+          ),
         });
       }
       return { prev };
@@ -251,7 +270,7 @@ export function useCreateTask() {
   });
 }
 
-interface SmsTemplate {
+export interface SmsTemplate {
   id: string;
   name: string;
   body: string;
@@ -290,6 +309,34 @@ export function useSyncSmsTemplates() {
       (await api.post<{ provider: string; fetched: number; upserted: number; skipped: number }>(
         "/sms/templates/sync",
       )).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["sms-templates"] }),
+  });
+}
+
+export function useCreateSmsTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { name: string; body: string }) =>
+      (await api.post<SmsTemplate>("/sms/templates", input)).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["sms-templates"] }),
+  });
+}
+
+export function useUpdateSmsTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id: string; name?: string; body?: string }) => {
+      const { id, ...body } = input;
+      return (await api.patch<SmsTemplate>(`/sms/templates/${id}`, body)).data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["sms-templates"] }),
+  });
+}
+
+export function useDeleteSmsTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => (await api.delete<{ id: string }>(`/sms/templates/${id}`)).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["sms-templates"] }),
   });
 }

@@ -2,7 +2,6 @@ import { useState } from "react";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { usePipelines } from "@/hooks/useKanban";
 import { usePipelineAdmin } from "@/hooks/usePipelineAdmin";
 import type { Pipeline, Stage } from "@/lib/types";
@@ -94,7 +93,7 @@ function PipelineRow({
           className="max-w-xs font-medium"
         />
         {pipeline.isDefault ? (
-          <Badge color="#16a34a">Default</Badge>
+          <span className="chip" data-tone="success">Default</span>
         ) : (
           <Button
             size="sm"

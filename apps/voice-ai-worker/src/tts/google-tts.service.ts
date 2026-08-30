@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { TextToSpeechClient } from "@google-cloud/text-to-speech";
+import type { TtsService } from "./tts-service";
 
 export interface SynthesizeOptions {
   language: "uz" | "ru";
@@ -20,14 +21,17 @@ export interface SynthesizeOptions {
  * Repeated lines (greetings, hold messages, "kuting") hit a md5-keyed disk
  * cache — TTS is the most expensive piece of the pipeline on a per-call basis.
  */
-export class GoogleTtsService {
+export class GoogleTtsService implements TtsService {
   private readonly client: TextToSpeechClient;
   private readonly cacheDir: string;
-  // uz-UZ-Wavenet-A is Google's Uzbek female Wavenet voice — warmest of the
-  // catalog. ru-RU-Wavenet-C is the matching Russian fallback.
+  // Google has NO native Uzbek TTS voice as of 2026-06. For Uzbek text we use
+  // the Russian female Wavenet voice — phonetically close enough on telephony
+  // audio (caller barely notices the accent) and the only realistic option
+  // without bringing in a separate provider. When Google ships an uz-UZ voice
+  // we'll flip this back. Override via env (VOICE_AI_TTS_VOICE_UZ / _RU).
   private readonly defaultVoices: Record<"uz" | "ru", string> = {
-    uz: "uz-UZ-Standard-A",
-    ru: "ru-RU-Wavenet-C",
+    uz: process.env.VOICE_AI_TTS_VOICE_UZ ?? "ru-RU-Wavenet-C",
+    ru: process.env.VOICE_AI_TTS_VOICE_RU ?? "ru-RU-Wavenet-C",
   };
 
   constructor(opts: { keyFilename?: string; cacheDir: string }) {
@@ -49,10 +53,15 @@ export class GoogleTtsService {
     const cachePath = join(this.cacheDir, `${key}.sln16`);
     if (existsSync(cachePath)) return cachePath;
 
+    // We always send `ru-RU` as the languageCode — both the Russian voice for
+    // Russian text and the Russian voice we use to read Uzbek text (no uz-UZ
+    // voice exists). Sending `uz-UZ` with a Russian voice fails with
+    // INVALID_ARGUMENT, so this normalization is required.
+    const languageCode = voice.split("-").slice(0, 2).join("-") || "ru-RU";
     const [response] = await this.client.synthesizeSpeech({
       input: { text },
       voice: {
-        languageCode: opts.language === "ru" ? "ru-RU" : "uz-UZ",
+        languageCode,
         name: voice,
         ssmlGender: "FEMALE",
       },

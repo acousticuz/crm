@@ -13,6 +13,7 @@ interface EskizConfig {
   baseUrl?: string;
   email?: string;
   password?: string;
+  apiKey?: string;
   // `from` is the sender ID Eskiz exposes per account. Optional — falls back
   // to the account default when unset.
   from?: string;
@@ -65,7 +66,7 @@ export class EskizSmsAdapter implements SmsAdapter {
     const baseUrl = this.baseUrl(config);
     try {
       const res = await this.withAuth(ctx.tenantId, config, baseUrl, (token) => {
-        const body = new URLSearchParams();
+        const body = new FormData();
         body.set("mobile_phone", input.phone.replace(/^\+/, ""));
         body.set("message", input.text);
         if (config.from) body.set("from", config.from);
@@ -73,9 +74,8 @@ export class EskizSmsAdapter implements SmsAdapter {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
-            "Content-Type": "application/x-www-form-urlencoded",
           },
-          body: body.toString(),
+          body,
         });
       });
       const json = (await res.json().catch(() => ({}))) as EskizSendResp;
@@ -206,16 +206,16 @@ export class EskizSmsAdapter implements SmsAdapter {
         return cached.token;
       }
     }
-    if (!cfg.email || !cfg.password) {
+    const password = cfg.password ?? cfg.apiKey;
+    if (!cfg.email || !password) {
       throw new Error("Eskiz: email va parol Settings'da o'rnatilmagan");
     }
-    const body = new URLSearchParams();
+    const body = new FormData();
     body.set("email", cfg.email);
-    body.set("password", cfg.password);
+    body.set("password", password);
     const res = await fetch(`${baseUrl}/auth/login`, {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: body.toString(),
+      body,
     });
     if (!res.ok) {
       throw new Error(`Eskiz login HTTP ${res.status}`);
@@ -275,8 +275,10 @@ function parseTemplate(raw: Record<string, unknown>): ProviderTemplate | null {
   const id = raw.id ?? raw.template_id;
   if (id == null) return null;
   const body =
-    (typeof raw.template === "string" && raw.template) ||
+    // Eskiz's `template` can be a shortened/moderated display variant where
+    // links are stripped. `original_text` preserves the exact approved body.
     (typeof raw.original_text === "string" && raw.original_text) ||
+    (typeof raw.template === "string" && raw.template) ||
     (typeof raw.text === "string" && raw.text) ||
     (typeof raw.message === "string" && raw.message);
   if (!body) return null;

@@ -35,6 +35,7 @@ import { TriggersModule } from "./modules/triggers/triggers.module";
 import { QaModule } from "./modules/qa/qa.module";
 import { AnalyticsModule } from "./modules/analytics/analytics.module";
 import { InboxModule } from "./modules/inbox/inbox.module";
+import { AcousticSyncModule } from "./modules/acoustic-sync/acoustic-sync.module";
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { InboxModule } from "./modules/inbox/inbox.module";
     QaModule,
     AnalyticsModule,
     InboxModule,
+    AcousticSyncModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: HttpExceptionFilter },

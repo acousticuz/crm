@@ -19,7 +19,7 @@ import { Audit } from "../../common/decorators/audit.decorator";
 import { ContactsService } from "./contacts.service";
 import { CreateContactDto } from "./dto/create-contact.dto";
 import { UpdateContactDto } from "./dto/update-contact.dto";
-import { FindContactsDto } from "./dto/find-contacts.dto";
+import { FindAcousticClientsDto, FindAcousticPurchasesDto, FindContactsDto } from "./dto/find-contacts.dto";
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller("contacts")
@@ -37,6 +37,18 @@ export class ContactsController {
   @Get()
   list(@Query() query: FindContactsDto) {
     return this.contacts.list(query);
+  }
+
+  @Roles(UserRole.TENANT_ADMIN, UserRole.SUPERVISOR, UserRole.OPERATOR, UserRole.ANALYST)
+  @Get("acoustic-clients")
+  acousticClients(@Query() query: FindAcousticClientsDto) {
+    return this.contacts.listAcousticClients(query);
+  }
+
+  @Roles(UserRole.TENANT_ADMIN, UserRole.SUPERVISOR, UserRole.OPERATOR, UserRole.ANALYST)
+  @Get("acoustic-purchases")
+  acousticPurchases(@Query() query: FindAcousticPurchasesDto) {
+    return this.contacts.listAcousticPurchases(query);
   }
 
   // Duplicate-detection endpoint used by the UI before insert.

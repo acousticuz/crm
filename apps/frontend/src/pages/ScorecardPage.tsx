@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Meter } from "@/components/ui/meter";
 import { cn } from "@/lib/utils";
 import { useScorecard } from "@/hooks/useAnalytics";
 
@@ -81,10 +82,11 @@ export function ScorecardPage(): JSX.Element {
             <DirectionIcon className="h-5 w-5" />
           </span>
           <div>
-            <h1 className="text-2xl font-semibold tracking-tightish text-foreground">
+            <p className="eyebrow mb-1">Qo'ng'iroq tahlili</p>
+            <h1 className="font-display text-3xl font-semibold tracking-tightish text-foreground">
               Scorecard
             </h1>
-            <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
+            <p className="mt-1 font-mono text-xs text-muted-foreground">
               {data.direction} · {data.status} ·{" "}
               {format(new Date(data.startedAt), "dd MMM yyyy HH:mm")}
               {data.duration > 0 && ` · ${data.duration}s`}
@@ -177,28 +179,39 @@ export function ScorecardPage(): JSX.Element {
                 qa.reviewer ? ` · supervayzer override: ${qa.reviewer.fullName}` : ""
               }`}
             />
-            <ul className="mt-3 space-y-1.5">
+            <ul className="mt-3 space-y-2">
               {qa.criteriaResults.map((r) => (
                 <li
                   key={r.criterionId}
-                  className="flex items-start gap-3 rounded-md border bg-card px-3 py-2.5 shadow-xs"
+                  className="rounded-md border bg-card px-3 py-2.5 shadow-xs"
                 >
-                  <span className="pt-0.5">
-                    {r.passed ? (
-                      <CheckCircle2 className="h-4 w-4 text-success" />
-                    ) : (
-                      <XCircle className="h-4 w-4 text-destructive" />
-                    )}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground">{r.criterionId}</p>
-                    <p className="mt-0.5 text-xs italic text-muted-foreground">
-                      Dalil: {r.evidence}
-                    </p>
+                  <div className="flex items-start gap-3">
+                    <span className="pt-0.5">
+                      {r.passed ? (
+                        <CheckCircle2 className="h-4 w-4 text-success" />
+                      ) : (
+                        <XCircle className="h-4 w-4 text-destructive" />
+                      )}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-mono text-sm font-medium text-foreground">
+                        {r.criterionId}
+                      </p>
+                      {r.evidence && (
+                        <p className="mt-1 border-l-2 border-border pl-2 text-xs italic text-muted-foreground">
+                          "{r.evidence}"
+                        </p>
+                      )}
+                    </div>
+                    <span className="shrink-0 self-center font-mono text-sm font-semibold text-foreground">
+                      {r.score}
+                    </span>
                   </div>
-                  <span className="shrink-0 self-center text-sm font-semibold tabular-nums text-foreground">
-                    {r.score}
-                  </span>
+                  <Meter
+                    value={Math.max(0, Math.min(100, Number(r.score) || 0))}
+                    tone={r.passed ? "success" : "destructive"}
+                    className="mt-2"
+                  />
                 </li>
               ))}
             </ul>
@@ -276,10 +289,8 @@ function ScoreTile({
         </span>
       </div>
       <div className="space-y-0.5">
-        <p className="text-xs uppercase tracking-wider text-muted-foreground">
-          {qa.script.name}
-        </p>
-        <p className="text-lg font-semibold tabular-nums text-foreground">
+        <p className="eyebrow">{qa.script.name}</p>
+        <p className="font-mono text-2xl font-semibold leading-none text-foreground">
           {finalScore}
           <span className="ml-1 text-sm font-normal text-muted-foreground">/ {qa.maxScore}</span>
         </p>
@@ -304,13 +315,13 @@ function SectionHeading({
       <span className="self-center">{icon}</span>
       <h2
         className={cn(
-          "text-sm font-semibold tracking-tightish",
+          "font-display text-base font-semibold tracking-tightish",
           destructive ? "text-destructive" : "text-foreground",
         )}
       >
         {title}
       </h2>
-      {sub && <span className="text-xs text-muted-foreground">{sub}</span>}
+      {sub && <span className="font-mono text-xs text-muted-foreground">{sub}</span>}
     </div>
   );
 }
@@ -318,22 +329,20 @@ function SectionHeading({
 function KV({ label, value }: { label: string; value?: string | null }) {
   return (
     <div>
-      <p className="text-2xs uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className="mt-0.5 text-sm font-medium text-foreground">{value ?? "—"}</p>
+      <p className="eyebrow">{label}</p>
+      <p className="mt-1 text-sm font-medium text-foreground">{value ?? "—"}</p>
     </div>
   );
 }
 
 function SeverityChip({ severity }: { severity: string }): JSX.Element {
+  // Drives the chip via the Soft Modern semantic tone — no inline classes
+  // so the look stays consistent with every other chip in the system.
   const meta =
     severity === "high"
-      ? { cls: "bg-destructive/15 text-destructive", label: "Yuqori" }
+      ? { tone: "destructive" as const, label: "Yuqori" }
       : severity === "medium"
-        ? { cls: "bg-warning/20 text-warning", label: "O'rta" }
-        : { cls: "bg-muted text-muted-foreground", label: "Past" };
-  return (
-    <Badge className={cn(meta.cls, "border-transparent uppercase tracking-wider")}>
-      {meta.label}
-    </Badge>
-  );
+        ? { tone: "warning" as const, label: "O'rta" }
+        : { tone: "muted" as const, label: "Past" };
+  return <Badge tone={meta.tone}>{meta.label}</Badge>;
 }

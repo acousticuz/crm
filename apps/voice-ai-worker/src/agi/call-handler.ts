@@ -5,7 +5,7 @@ import type { ClaudeAgentService, AiTurn, CollectedData } from "../ai/claude-age
 import type { CrmBridge } from "../crm/crm-bridge.service";
 import type { TelegramNotifier } from "../telegram/notifier.service";
 import type { StreamingSttService } from "../stt/streaming-stt.service";
-import type { GoogleTtsService } from "../tts/google-tts.service";
+import type { TtsService } from "../tts/tts-service";
 import type { AgiChannel } from "./agi-protocol";
 
 export interface CallHandlerDeps {
@@ -13,7 +13,7 @@ export interface CallHandlerDeps {
   recordingsDir: string;
   ttsCacheDir: string;
   stt: StreamingSttService;
-  tts: GoogleTtsService;
+  tts: TtsService;
   ai: ClaudeAgentService;
   crm: CrmBridge;
   notifier: TelegramNotifier;

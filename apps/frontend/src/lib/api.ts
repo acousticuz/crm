@@ -3,7 +3,13 @@ import axios, { type AxiosInstance } from "axios";
 // Centralised HTTP client. Adds Authorization from localStorage and bounces
 // the user back to /login on 401.
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3005";
+const configuredBaseUrl = import.meta.env.VITE_API_URL;
+const BASE_URL =
+  !configuredBaseUrl ||
+  configuredBaseUrl === "/" ||
+  /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(configuredBaseUrl)
+    ? window.location.origin
+    : configuredBaseUrl;
 
 export const ACCESS_TOKEN_KEY = "acoustic:accessToken";
 export const REFRESH_TOKEN_KEY = "acoustic:refreshToken";

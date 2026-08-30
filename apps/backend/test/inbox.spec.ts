@@ -9,6 +9,7 @@ import { RealtimeService } from "../src/modules/realtime/realtime.service";
 import { AuditService } from "../src/modules/audit/audit.service";
 import { InboxService } from "../src/modules/inbox/inbox.service";
 import { IntegrationsService } from "../src/modules/integrations/integrations.service";
+import { ContactsService } from "../src/modules/contacts/contacts.service";
 import { detectSensitiveCategories } from "../src/modules/inbox/sensitivity";
 import { writeContext } from "../src/common/tenant-context";
 
@@ -30,7 +31,14 @@ describe("M10 — Omnichannel inbox + AI draft + safety guardrails", () => {
         ClsModule.forRoot({ global: true }),
         EventEmitterModule.forRoot({ wildcard: true }),
       ],
-      providers: [PrismaService, RealtimeService, AuditService, IntegrationsService, InboxService],
+      providers: [
+        PrismaService,
+        RealtimeService,
+        AuditService,
+        IntegrationsService,
+        ContactsService,
+        InboxService,
+      ],
     }).compile();
     await moduleRef.init();
 
@@ -294,6 +302,37 @@ describe("M10 — Omnichannel inbox + AI draft + safety guardrails", () => {
       expect(msg!.externalMessageId).toBe("1");
     });
 
+    it("operator can attach a collected phone number to the Telegram contact", async () => {
+      await inbox.ingestTelegramUpdate(
+        tenantId,
+        makeUpdate({
+          update_id: 150,
+          chat_id: 556,
+          message_id: 2,
+          text: "Telefonimni yozaman",
+          from: { id: 4243, first_name: "Mijoz" },
+        }),
+      );
+      const thread = await prisma.inboxThread.findFirst({
+        where: { tenantId, channel: "telegram", externalThreadId: "556" },
+      });
+      expect(thread).not.toBeNull();
+
+      await asTenant(() =>
+        inbox.linkPhoneToThread(thread!.id, {
+          phone: "+998 90 111 22 55",
+          fullName: "Mijoz Test",
+        }),
+      );
+
+      const updated = await prisma.inboxThread.findFirst({
+        where: { id: thread!.id },
+        include: { contact: true },
+      });
+      expect(updated?.contact?.phones).toContain("+998901112255");
+      expect(updated?.contact?.fullName).toBe("Mijoz Test");
+    });
+
     it("inbound update is idempotent — same update_id processed twice produces one message", async () => {
       await inbox.ingestTelegramUpdate(
         tenantId,
@@ -475,6 +514,53 @@ describe("M10 — Omnichannel inbox + AI draft + safety guardrails", () => {
         const result = await inbox.tickTelegramPolling(tenantId);
         expect(result.processed).toBe(0);
         expect(fetchSpy).not.toHaveBeenCalled();
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it("tickTelegramPolling deletes an active webhook conflict and retries getUpdates", async () => {
+      await cls.run(async () => {
+        writeContext(cls, {
+          tenantId,
+          userId,
+          role: UserRole.TENANT_ADMIN,
+          email: "admin@test.local",
+          skipTenantFilter: false,
+        });
+        await integrations().upsert("TELEGRAM" as never, {
+          config: { botToken: "bot-webhook-conflict" },
+        });
+      });
+
+      const calls: string[] = [];
+      const fetchSpy = jest
+        .spyOn(global, "fetch")
+        .mockImplementation(async (url: RequestInfo | URL, init?: RequestInit) => {
+          calls.push(`${init?.method ?? "GET"} ${String(url)}`);
+          if (String(url).includes("/getUpdates") && calls.length === 1) {
+            return new Response(
+              JSON.stringify({
+                ok: false,
+                description:
+                  "Conflict: can't use getUpdates method while webhook is active; use deleteWebhook to delete the webhook first",
+              }),
+              { status: 409 },
+            );
+          }
+          if (String(url).includes("/deleteWebhook")) {
+            return new Response(JSON.stringify({ ok: true, result: true }), { status: 200 });
+          }
+          if (String(url).includes("/getUpdates")) {
+            return new Response(JSON.stringify({ ok: true, result: [] }), { status: 200 });
+          }
+          return new Response(JSON.stringify({ ok: true }), { status: 200 });
+        });
+      try {
+        const result = await inbox.tickTelegramPolling(tenantId);
+        expect(result.processed).toBe(0);
+        expect(calls.some((c) => c.includes("/deleteWebhook"))).toBe(true);
+        expect(calls.filter((c) => c.includes("/getUpdates"))).toHaveLength(2);
       } finally {
         fetchSpy.mockRestore();
       }

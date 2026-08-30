@@ -44,13 +44,17 @@ export function KanbanColumn({ stage, cards, onOpenCard, activeCardId }: Props):
 
   return (
     <section
+      data-kanban-column
       className={cn(
-        "flex flex-shrink-0 flex-col rounded-lg border bg-surface/60 transition-[width] duration-200 ease-out",
-        collapsed ? "w-[56px]" : "w-[288px]",
-        // Subtle tone for terminal columns. Keeps NORMAL columns neutral so
-        // the eye isn't fighting too many surfaces.
-        isWon && "bg-success/[0.04] border-success/30",
-        isLost && "bg-destructive/[0.04] border-destructive/30",
+        // Soft Modern column: 280-320px range, 14px radius, calm surface tint.
+        // Terminal columns get a barely-there semantic tint so the eye finds
+        // them without the surface fighting cards.
+        // snap-start lets the horizontal board align columns when the user
+        // wheels/drags; without `snap-mandatory` operators can still free-scroll.
+        "flex flex-shrink-0 snap-start flex-col rounded-lg border bg-surface/40 transition-[width] duration-200 ease-out",
+        collapsed ? "w-[64px]" : "w-[300px]",
+        isWon && "bg-success-soft/40 border-success/20",
+        isLost && "bg-destructive-soft/40 border-destructive/20",
       )}
     >
       {/* Color accent rail — full-width strip at the top of the column. */}
@@ -60,34 +64,35 @@ export function KanbanColumn({ stage, cards, onOpenCard, activeCardId }: Props):
         aria-hidden
       />
 
-      {/* Header. Collapse toggle on the left, terminal-type chip on the right. */}
-      <header className="flex items-center gap-2 px-3 py-2.5">
+      {/* Header. Collapse toggle on the left, count badge + terminal chip on
+          the right. */}
+      <header className="flex items-center gap-2 px-3 py-3">
         <button
           type="button"
           onClick={() => setCollapsed((v) => !v)}
-          className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-surface hover:text-foreground"
+          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface hover:text-foreground"
           title={collapsed ? "Yoyish" : "Yig'ish"}
         >
           {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
         </button>
         {!collapsed && (
           <>
-            <h3 className="flex-1 truncate text-sm font-semibold tracking-tightish text-foreground">
+            <h3 className="font-display flex-1 truncate text-sm font-semibold tracking-tight text-foreground">
               {stage.name}
             </h3>
-            <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-card px-1.5 text-2xs font-medium tabular-nums text-muted-foreground">
+            <span className="inline-flex h-5 min-w-[22px] items-center justify-center rounded-full bg-card px-1.5 font-mono text-2xs font-medium text-muted-foreground">
               {cards.length}
             </span>
             {isWon && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-success/15 px-1.5 py-px text-2xs font-semibold uppercase tracking-wider text-success">
+              <span className="chip" data-tone="success">
                 <Trophy className="h-3 w-3" />
-                Won
+                WON
               </span>
             )}
             {isLost && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-1.5 py-px text-2xs font-semibold uppercase tracking-wider text-destructive">
+              <span className="chip" data-tone="destructive">
                 <XCircle className="h-3 w-3" />
-                Lost
+                LOST
               </span>
             )}
           </>
@@ -96,16 +101,17 @@ export function KanbanColumn({ stage, cards, onOpenCard, activeCardId }: Props):
 
       {/* Header meta (Σ budget) — single row, only when non-zero. */}
       {!collapsed && totalBudget > 0 && (
-        <p className="px-3 pb-2 text-2xs tabular-nums text-muted-foreground">
+        <p className="px-3 pb-2 font-mono text-2xs text-muted-foreground">
           Σ {formatSum(totalBudget)}
         </p>
       )}
 
-      {/* Card list / drop zone. */}
+      {/* Card list / drop zone. 12px gap so cards have space to breathe; 60vh
+          minimum so a column with two cards still looks intentional. */}
       <div
         ref={setNodeRef}
         className={cn(
-          "flex flex-1 flex-col gap-2 px-2 pb-2 transition-colors",
+          "flex flex-1 flex-col gap-3 px-3 pb-3 transition-colors",
           collapsed ? "min-h-[120px] items-center justify-start py-3" : "min-h-[60vh] overflow-y-auto",
           // Drop highlight — soft primary tint + ring so the operator sees
           // exactly where the card will land.
@@ -119,12 +125,12 @@ export function KanbanColumn({ stage, cards, onOpenCard, activeCardId }: Props):
             title={`${cards.length} ta karta`}
           >
             <span
-              className="inline-flex h-6 min-w-[24px] items-center justify-center rounded-full bg-card px-1.5 text-2xs font-semibold tabular-nums"
+              className="inline-flex h-6 min-w-[24px] items-center justify-center rounded-full bg-card px-1.5 font-mono text-2xs font-semibold"
             >
               {cards.length}
             </span>
             <span
-              className="mt-1 px-1 text-center text-2xs font-medium uppercase tracking-wider"
+              className="mt-1 px-1 text-center font-mono text-2xs font-medium uppercase tracking-wider"
               style={{ writingMode: "vertical-rl", textOrientation: "mixed" }}
             >
               {stage.name}
@@ -141,8 +147,11 @@ export function KanbanColumn({ stage, cards, onOpenCard, activeCardId }: Props):
               />
             ))}
             {cards.length === 0 && (
-              <div className="my-auto rounded-md border border-dashed border-border/70 px-3 py-5 text-center text-xs text-muted-foreground">
-                Kartalar yo'q
+              <div className="my-auto flex flex-col items-center gap-2 rounded-md border border-dashed border-border/70 px-3 py-6 text-center">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-surface text-muted-foreground/70">
+                  <span aria-hidden className="text-base">∅</span>
+                </div>
+                <p className="text-xs text-muted-foreground">Hali karta yo'q</p>
               </div>
             )}
           </>

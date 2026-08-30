@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import type { CardStatus, PageResult, StageType } from "@/lib/types";
 
 export interface Contact {
   id: string;
@@ -22,6 +23,58 @@ export interface CreateContactInput {
   phones: string[];
   email?: string | null;
   source?: string;
+}
+
+export interface AcousticClientFilters {
+  q?: string;
+  status?: string;
+  branchId?: string;
+  branchIds?: string[];
+  dateFrom?: string;
+  dateTo?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface AcousticClient {
+  id: string;
+  fullName: string;
+  phones: string[];
+  source: string | null;
+  responsible: { id: string; fullName: string } | null;
+  createdAt: string;
+  updatedAt: string;
+  acoustic: {
+    clientId?: number;
+    status?: string;
+    nextAction?: string | null;
+    visited?: boolean;
+    purchased?: boolean;
+    purchaseAmount?: number | null;
+    callCenterDate?: string | null;
+    firstVisitDate?: string | null;
+    visitBranchId?: number | null;
+    visitBranchName?: string | null;
+    purchaseBranchId?: number | null;
+    purchaseBranchName?: string | null;
+    purchaseDate?: string | null;
+    products?: Array<{
+      product_ref_id?: number | null;
+      product_name?: string | null;
+      quantity?: number | null;
+    }>;
+  } | null;
+  card: {
+    id: string;
+    title: string;
+    status: CardStatus;
+    budget: string | null;
+    branchId: string | null;
+    updatedAt: string;
+    branch: { id: string; name: string } | null;
+    responsible: { id: string; fullName: string } | null;
+    stage: { id: string; name: string; type: StageType } | null;
+  } | null;
 }
 
 /**
@@ -64,6 +117,33 @@ export function useContactByPhone(phone: string | null | undefined) {
   });
 }
 
+export function useAcousticClients(filters: AcousticClientFilters) {
+  return useQuery<PageResult<AcousticClient>>({
+    queryKey: ["contacts", "acoustic-clients", filters],
+    queryFn: async () =>
+      (
+        await api.get<PageResult<AcousticClient>>("/contacts/acoustic-clients", {
+          params: filters,
+        })
+      ).data,
+  });
+}
+
+export function useAcousticPurchases(filters: AcousticClientFilters) {
+  return useQuery<PageResult<AcousticClient>>({
+    queryKey: ["contacts", "acoustic-purchases", filters],
+    queryFn: async () =>
+      (
+        await api.get<PageResult<AcousticClient>>("/contacts/acoustic-purchases", {
+          params: {
+            ...filters,
+            branchIds: filters.branchIds?.length ? filters.branchIds.join(",") : undefined,
+          },
+        })
+      ).data,
+  });
+}
+
 export interface RecentCall {
   id: string;
   direction: "INBOUND" | "OUTBOUND";
@@ -79,7 +159,16 @@ export interface RecentCall {
   card: { id: string; title: string } | null;
 }
 
-export function useRecentCalls(opts: { missedOnly?: boolean; limit?: number } = {}) {
+export function useRecentCalls(
+  opts: {
+    missedOnly?: boolean;
+    limit?: number;
+    /** Inclusive YYYY-MM-DD. */
+    dateFrom?: string;
+    /** Inclusive YYYY-MM-DD. */
+    dateTo?: string;
+  } = {},
+) {
   return useQuery<RecentCall[]>({
     queryKey: ["calls", "recent", opts],
     queryFn: async () =>
@@ -89,6 +178,8 @@ export function useRecentCalls(opts: { missedOnly?: boolean; limit?: number } = 
             recent: "true",
             limit: opts.limit ?? 100,
             missedOnly: opts.missedOnly ? "true" : undefined,
+            dateFrom: opts.dateFrom || undefined,
+            dateTo: opts.dateTo || undefined,
           },
         })
       ).data,

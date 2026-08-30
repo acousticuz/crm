@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { format } from "date-fns";
 import {
@@ -9,8 +9,12 @@ import {
   ExternalLink,
   ListFilter,
   Sparkles,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Waveform } from "@/components/ui/waveform";
 import { cn } from "@/lib/utils";
 import {
   isPlaceholderContact,
@@ -29,17 +33,47 @@ import { SaveUnknownContactForm } from "@/components/contacts/SaveUnknownContact
  */
 export function CallsPage(): JSX.Element {
   const [missedOnly, setMissedOnly] = useState(false);
-  const { data: calls = [], isLoading } = useRecentCalls({ missedOnly });
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
+  // Bump limit when filtering so a wide date range still returns everything
+  // (backend caps at 500).
+  const limit = dateFrom || dateTo ? 500 : 100;
+  const filtersActive = Boolean(dateFrom || dateTo || missedOnly);
+
+  const { data: calls = [], isLoading } = useRecentCalls(
+    useMemo(
+      () => ({
+        missedOnly,
+        limit,
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+      }),
+      [missedOnly, limit, dateFrom, dateTo],
+    ),
+  );
+
+  function clearFilters() {
+    setMissedOnly(false);
+    setDateFrom("");
+    setDateTo("");
+  }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-baseline justify-between gap-3">
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tightish text-foreground">
+          <p className="eyebrow mb-1">Telefoniya</p>
+          <h1 className="font-display text-3xl font-semibold tracking-tightish text-foreground">
             Qo'ng'iroqlar
           </h1>
-          <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
+          <p className="mt-1 font-mono text-xs text-muted-foreground">
             {calls.length} ta {missedOnly ? "javobsiz qo'ng'iroq" : "qo'ng'iroq"}
+            {(dateFrom || dateTo) && (
+              <>
+                {" · "}
+                {dateFrom || "boshidan"} – {dateTo || "bugungacha"}
+              </>
+            )}
           </p>
         </div>
         <Button
@@ -52,14 +86,50 @@ export function CallsPage(): JSX.Element {
         </Button>
       </div>
 
+      {/* Date range filter — backend sorts startedAt desc, so the latest call
+          in the range lands at the top. Two date inputs match the Dashboard's
+          range UX so operators don't learn two patterns. */}
+      <div className="card-surface flex flex-wrap items-end gap-3 p-3">
+        <div>
+          <Label htmlFor="from" className="text-2xs uppercase tracking-wider">
+            Sanadan
+          </Label>
+          <Input
+            id="from"
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="w-40"
+          />
+        </div>
+        <div>
+          <Label htmlFor="to" className="text-2xs uppercase tracking-wider">
+            Sanagacha
+          </Label>
+          <Input
+            id="to"
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="w-40"
+          />
+        </div>
+        {filtersActive && (
+          <Button variant="ghost" size="sm" onClick={clearFilters}>
+            <X className="h-3.5 w-3.5" />
+            Tozalash
+          </Button>
+        )}
+      </div>
+
       {isLoading ? (
         <div className="card-surface flex h-32 items-center justify-center text-sm text-muted-foreground">
           Yuklanmoqda...
         </div>
       ) : calls.length === 0 ? (
         <div className="card-surface p-8 text-center text-sm text-muted-foreground">
-          {missedOnly
-            ? "Belgilangan davrda javobsiz qo'ng'iroqlar yo'q."
+          {filtersActive
+            ? "Tanlangan filtrlar uchun qo'ng'iroqlar topilmadi."
             : "Hozircha qo'ng'iroqlar topilmadi."}
         </div>
       ) : (
@@ -104,21 +174,32 @@ function CallListItem({ call, isFirst }: { call: RecentCall; isFirst: boolean })
             >
               {call.contact?.fullName ?? "Noma'lum"}
             </span>
-            <span className="text-xs tabular-nums text-muted-foreground">{customerNumber}</span>
+            <span className="font-mono text-xs text-muted-foreground">{customerNumber}</span>
             <StatusPill status={call.status} />
           </div>
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-2xs text-muted-foreground">
+          <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-2xs text-muted-foreground">
             <span>{format(new Date(call.startedAt), "dd MMM HH:mm")}</span>
             {call.duration > 0 && (
               <>
                 <Dot />
-                <span className="tabular-nums">{formatDuration(call.duration)}</span>
+                <span>{formatDuration(call.duration)}</span>
+              </>
+            )}
+            {call.status !== "MISSED" && call.duration > 0 && (
+              <>
+                <Dot />
+                <Waveform
+                  seed={call.id}
+                  bars={14}
+                  className="h-3 text-muted-foreground/70"
+                  title="Yozuv to'lqini"
+                />
               </>
             )}
             {call.operator && (
               <>
                 <Dot />
-                <span>{call.operator.fullName}</span>
+                <span className="font-sans">{call.operator.fullName}</span>
               </>
             )}
           </p>
@@ -182,23 +263,24 @@ function CallListItem({ call, isFirst }: { call: RecentCall; isFirst: boolean })
 // --- helpers --------------------------------------------------------------
 
 function StatusPill({ status }: { status: string }): JSX.Element {
-  const meta =
+  // Soft Modern call status — chip pattern, semantic tone.
+  const meta: { label: string; tone: "destructive" | "success" | "warning" | "info" | "muted" } =
     status === "MISSED"
-      ? { label: "Javobsiz", cls: "bg-destructive/10 text-destructive" }
+      ? { label: "Javobsiz", tone: "destructive" }
       : status === "ANSWERED"
-        ? { label: "Javob berilgan", cls: "bg-success/15 text-success" }
+        ? { label: "Javob berilgan", tone: "success" }
         : status === "BUSY"
-          ? { label: "Band", cls: "bg-warning/20 text-warning" }
+          ? { label: "Band", tone: "warning" }
           : status === "FAILED"
-            ? { label: "Xato", cls: "bg-destructive/10 text-destructive" }
+            ? { label: "Xato", tone: "destructive" }
             : status === "RINGING"
-              ? { label: "Jiringlamoqda", cls: "bg-info/15 text-info" }
-              : { label: status, cls: "bg-muted text-muted-foreground" };
+              ? { label: "Jiringlamoqda", tone: "info" }
+              : { label: status, tone: "muted" };
   return (
     <span
+      data-tone={meta.tone}
       className={cn(
-        "inline-flex items-center rounded-full px-1.5 py-px text-2xs font-medium tracking-tightish",
-        meta.cls,
+        "chip text-2xs",
       )}
     >
       {meta.label}

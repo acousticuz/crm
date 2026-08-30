@@ -44,8 +44,9 @@ async function bootstrap(): Promise<void> {
   }
 
   const port = config.get<number>("BACKEND_PORT", 3001);
-  await app.listen(port);
-  Logger.log(`Acoustic CRM backend listening on http://localhost:${port}`, "Bootstrap");
+  const host = config.get<string>("BACKEND_HOST", "0.0.0.0");
+  await app.listen(port, host);
+  Logger.log(`Acoustic CRM backend listening on http://${host}:${port}`, "Bootstrap");
 }
 
 bootstrap().catch((err) => {

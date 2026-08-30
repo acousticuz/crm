@@ -2,6 +2,9 @@ import { startAgiServer } from "./agi/agi-server";
 import { CallHandler } from "./agi/call-handler";
 import { StreamingSttService } from "./stt/streaming-stt.service";
 import { GoogleTtsService } from "./tts/google-tts.service";
+import { ElevenLabsTtsService } from "./tts/elevenlabs-tts.service";
+import { AzureTtsService } from "./tts/azure-tts.service";
+import type { TtsService } from "./tts/tts-service";
 import { ClaudeAgentService } from "./ai/claude-agent.service";
 import { CrmBridge } from "./crm/crm-bridge.service";
 import { TelegramNotifier } from "./telegram/notifier.service";
@@ -57,10 +60,38 @@ async function main(): Promise<void> {
     keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
     model: process.env.VOICE_AI_STT_MODEL ?? "phone_call",
   });
-  const tts = new GoogleTtsService({
-    keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
-    cacheDir: process.env.TTS_CACHE_DIR ?? "/tmp/voice-ai-tts-cache",
-  });
+  const ttsProvider = (process.env.VOICE_AI_TTS_PROVIDER ?? "google").toLowerCase();
+  const ttsCacheDir = process.env.TTS_CACHE_DIR ?? "/tmp/voice-ai-tts-cache";
+  let tts: TtsService;
+  if (ttsProvider === "azure") {
+    tts = new AzureTtsService({
+      apiKey: process.env.AZURE_SPEECH_KEY ?? "",
+      region: process.env.AZURE_SPEECH_REGION ?? "",
+      cacheDir: ttsCacheDir,
+      voiceUz: process.env.AZURE_SPEECH_VOICE_UZ,
+      voiceRu: process.env.AZURE_SPEECH_VOICE_RU,
+      speakingRate: process.env.AZURE_SPEECH_RATE
+        ? Number(process.env.AZURE_SPEECH_RATE)
+        : undefined,
+    });
+    console.log(
+      `[voice-ai] TTS: Azure (voice=${process.env.AZURE_SPEECH_VOICE_UZ ?? "uz-UZ-MadinaNeural"})`,
+    );
+  } else if (ttsProvider === "elevenlabs") {
+    tts = new ElevenLabsTtsService({
+      apiKey: process.env.ELEVENLABS_API_KEY ?? "",
+      cacheDir: ttsCacheDir,
+      voiceId: process.env.ELEVENLABS_VOICE_ID,
+      modelId: process.env.ELEVENLABS_MODEL_ID,
+    });
+    console.log(`[voice-ai] TTS: ElevenLabs (voice=${process.env.ELEVENLABS_VOICE_ID ?? "Rachel"})`);
+  } else {
+    tts = new GoogleTtsService({
+      keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+      cacheDir: ttsCacheDir,
+    });
+    console.log("[voice-ai] TTS: Google");
+  }
   const ai = new ClaudeAgentService({
     apiKey: process.env.ANTHROPIC_API_KEY ?? "",
     model: process.env.VOICE_AI_CLAUDE_MODEL ?? "claude-opus-4-7",

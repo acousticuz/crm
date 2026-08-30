@@ -402,24 +402,23 @@ export class IntegrationsService {
     const t = setTimeout(() => controller.abort(), 6000);
     try {
       if (provider === "eskiz") {
-        // Eskiz: only email + password are stored. Every "Tekshirish" press
+        // Eskiz: email + secret key are stored. Every "Tekshirish" press
         // does a real /auth/login → /auth/user health check; the long-lived
         // JWT is then cached by EskizSmsAdapter on the next actual call.
         // No "token expired" wording leaks here — the adapter handles tokens
         // entirely on its own.
         const base = (process.env.ESKIZ_BASE_URL ?? "https://notify.eskiz.uz/api").replace(/\/$/, "");
-        const login = String(config.login ?? "").trim();
-        const password = String(config.password ?? "");
+        const login = String(config.login ?? config.email ?? "").trim();
+        const password = String(config.password ?? config.apiKey ?? "");
         if (!login || !password) {
           return { ok: false, message: "Eskiz email va parolni kiriting" };
         }
-        const body = new URLSearchParams();
+        const body = new FormData();
         body.set("email", login);
         body.set("password", password);
         const loginRes = await fetch(`${base}/auth/login`, {
           method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: body.toString(),
+          body,
           signal: controller.signal,
         });
         if (!loginRes.ok) {

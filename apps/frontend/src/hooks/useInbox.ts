@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { api } from "@/lib/api";
+import { getSocket } from "@/lib/socket";
 
 export interface InboxThread {
   id: string;
@@ -75,4 +77,30 @@ export function useSendInboxMessage() {
       (await api.post(`/inbox/threads/${input.threadId}/messages`, { text: input.text })).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["inbox"] }),
   });
+}
+
+export function useLinkInboxThreadPhone() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { threadId: string; phone: string; fullName?: string }) =>
+      (await api.post(`/inbox/threads/${input.threadId}/contact-phone`, {
+        phone: input.phone,
+        fullName: input.fullName,
+      })).data,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["inbox"] }),
+  });
+}
+
+export function useInboxRealtime(): void {
+  const qc = useQueryClient();
+  useEffect(() => {
+    const socket = getSocket();
+    const refetchInbox = () => {
+      qc.invalidateQueries({ queryKey: ["inbox"] });
+    };
+    socket.on("inbox:message", refetchInbox);
+    return () => {
+      socket.off("inbox:message", refetchInbox);
+    };
+  }, [qc]);
 }

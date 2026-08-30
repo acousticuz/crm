@@ -48,6 +48,18 @@ export class SendManualMessageDto {
   text!: string;
 }
 
+export class LinkThreadPhoneDto {
+  @IsString()
+  @MinLength(5)
+  @MaxLength(32)
+  phone!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  fullName?: string;
+}
+
 export class ListThreadsQueryDto {
   @IsOptional()
   @IsString()

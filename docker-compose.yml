@@ -11,7 +11,7 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: acoustic-postgres
+    container_name: acoustic-crm-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-acoustic}
@@ -29,7 +29,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: acoustic-redis
+    container_name: acoustic-crm-redis
     restart: unless-stopped
     ports:
       - "${REDIS_HOST_PORT:-6380}:6379"
@@ -43,7 +43,7 @@ services:
 
   minio:
     image: minio/minio:latest
-    container_name: acoustic-minio
+    container_name: acoustic-crm-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -62,8 +62,10 @@ services:
 
   nginx:
     image: nginx:1.27-alpine
-    container_name: acoustic-nginx
+    container_name: acoustic-crm-nginx
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${NGINX_HOST_PORT:-8082}:80"
     volumes:

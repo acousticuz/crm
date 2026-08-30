@@ -2,9 +2,40 @@
 
 ## Holat
 - **Asosiy 11 milestone + Settings + Call-fixes + Integration-runtime + Operator-extension tugatildi** 🎉
-- Joriy ish: **Telegram polling inbound — default polling fix**
-- Status: **done**
+- Joriy ish: **Voice-AI worker — real-time AI telefon yordamchisi (yangi apps/voice-ai-worker)**
+- Status: **scaffolded, build/lint kutilmoqda**
 - Repo: https://github.com/acousticuz/crm
+
+## Voice-AI worker — yangi modul (2026-06-10)
+- [x] **`apps/voice-ai-worker/` workspace package** — `@acoustic-crm/voice-ai-worker`, `pnpm-workspace.yaml` allaqachon `apps/*` ni qamrab oladi (qo'shimcha o'zgartirish kerak emas).
+- [x] **AGI TCP server** (`src/agi/agi-server.ts` + `agi-protocol.ts`) — `asterisk-agi` paketisiz, xom AGI satr-protokolini parsing qiladi (env headers `\n\n` terminator bilan, command/response loop). Node `net` orqali listener. Birinchi `agi_*` blok kelganda boshqaruv `AgiChannel`'ga o'tadi. Test: `src/agi/agi-protocol.test.ts` (handshake, response parsing, hangup case'lar).
+- [x] **Call handler** (`src/agi/call-handler.ts`) — per-call state machine: greet → listen → Claude → speak → loop. `RECORD FILE … sln16` orqali har turn alohida audio fayl yoziladi, Google STT'ga uzatiladi, Claude javobi `STREAM FILE` orqali ijro etiladi. Xavfsizlik chegaralari: `maxTurns`, `maxSilenceMs`, hangup detection.
+- [x] **Streaming STT** (`src/stt/streaming-stt.service.ts`) — `@google-cloud/speech` `streamingRecognize` gRPC oqimiga audio uzatadi. `phone_call` modeli, uz-UZ primary + ru-RU alternative, `enableAutomaticPunctuation`. Batch o'rniga oqim — har turn 500 ms ichida javob.
+- [x] **Claude conversation** (`src/ai/claude-agent.service.ts` + `system-prompt.ts`) — `acoustic_voice_ai_prompt.md` system prompt'i + 5 ta few-shot misol. JSON envelope `{speak, action, collected, confidence, notes}`. JSON parsing himoyali (LLM JSON qaytarmasa — fallback "xodimga ulayman"). Tarix `historyTurns` (default 12) bilan cheklangan.
+- [x] **Google TTS** (`src/tts/google-tts.service.ts`) — `@google-cloud/text-to-speech` orqali ayol uz-UZ-Standard-A ovoz (Wavenet hozircha Uzbek uchun yo'q — Standard ishlatiladi), 16 kHz LINEAR16, telephony-class-application effects profile. md5 cache `/tmp/voice-ai-tts-cache`. WAV header strip qilinadi (Asterisk `.sln16` raw kutadi).
+- [x] **CRM bridge** (`src/crm/crm-bridge.service.ts`) — `acoustic_db`'ga to'g'ridan-to'g'ri yozmaydi. Mavjud `/api/v1/internal/calls/{started,completed}` orqali Call lifecycle yuboriladi → backend avtomatik Contact ("Noma'lum" agar yangi raqam) + Card yaratadi. Optional: `VOICE_AI_WEBHOOK_SECRETS` JSON map o'rnatilsa, `/api/v1/leads/webhook/:tenantId/voice-ai` ga Lead POST qiladi (city/branch/issue/preferred_time pre-populated).
+- [x] **Telegram notifier** (`src/telegram/notifier.service.ts`) — har suhbat oxirida master Call-Center chati + branch-spesifik chatga Markdown xulosa: muammo, shahar, filial, qulay vaqt, til, oxirgi 12 turn. Bot token env'dan, branch map JSON env'dan.
+- [x] **Business hours** (`src/config/business-hours.ts`) — `BUSINESS_*` env'lardan o'qiydi, agent javobi uchun "ertaga soat 9 dan" so'zlash to'g'riligini ta'minlaydi. Asterisk Time Condition baribir asosiy gatekeeper.
+- [x] **FreePBX dialplan** — `apps/voice-ai-worker/README.md`'da `[acoustic-ai-ivr]` context (`Answer`, `MixMonitor`, `AGI(agi://127.0.0.1:4573)`), Inbound Route → Time Condition (Mon-Sat 09-18) → Queue → fallback to `acoustic-ai-ivr,s,1`.
+- [x] **ecosystem.config.cjs** — `acoustic-voice-ai-worker` pm2 app qo'shildi (default disabled — `pm2 start --only acoustic-voice-ai-worker` orqali yoqiladi, chunki Google/Claude credentials avval kerak).
+- [x] **.env.example** — yangi `VOICE_AI_*` o'zgaruvchilar (tenant ID, AGI port, recording dir, max turns, Telegram bot, webhook secrets) + `GOOGLE_APPLICATION_CREDENTIALS` va `BUSINESS_*`.
+
+### Mavjud servislardan foydalanish
+- **STT/TTS**: ai-worker'ning `GoogleSttAdapter` patterni qayta ishlatildi, lekin yangi `@google-cloud/speech` gRPC streaming + `@google-cloud/text-to-speech` paketlari (haqiqiy real-time uchun batch HTTP yetarli emas).
+- **LLM**: `ClaudeLlmAdapter` HTTP shakli qayta ishlatildi (`anthropic-version: 2023-06-01`, `x-api-key`).
+- **Telephony**: telephony-worker'ga tegilmadi. AGI alohida — AMI'ga muqobil emas, balki to'ldiruvchi (Time Condition orqali yo'naltirish).
+- **Queue**: BullMQ ishlatilmadi — real-time suhbat har bir AGI TCP ulanishi alohida bo'lishi kerak, queue worker pattern bu yerda mos kelmaydi. ai-worker BullMQ'ga tegilmadi (after-the-fact tahlil hali ham ai-worker'da).
+- **CRM**: faqat mavjud `/api/v1/internal/calls/*` endpointlar va public lead webhook. Yangi backend modul YO'Q.
+
+### Keyingi qadam
+- `pnpm install` (yangi `@google-cloud/speech` va `@google-cloud/text-to-speech` paketlari).
+- `pnpm -r build` (5 + 1 = 6 paket).
+- `pnpm lint`, `pnpm test` (voice-ai-worker'da AGI protocol unit test).
+- Google Cloud project yaratish, Speech + TTS API yoqish, service-account JSON.
+- FreePBX'da extensions_custom.conf + Time Condition + Inbound Route sozlash.
+- Real qo'ng'iroq bilan to'liq sinov (greeting → STT → Claude → TTS → CRM yozuvi → Telegram).
+
+
 
 ## Telegram polling inbound — bug fix (2026-06-03)
 - [x] **Default polling fix**: `tickTelegramPolling` endi `inboundMode` o'rnatilmagan tenantlar uchun ham polling qiladi. Yangi `isPollingEligible(cfg)` — botToken bo'sh emasligini va mode'ning `off`/`webhook` emasligini tekshiradi (defaul ham polling). Eski xato: mode=undefined → "off" deb tushunilardi → ulangan bot bo'lsa ham message qabul qilmasdi.

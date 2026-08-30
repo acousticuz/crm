@@ -11,8 +11,8 @@ export const SheetTrigger = DialogPrimitive.Trigger;
 export const SheetClose = DialogPrimitive.Close;
 export const SheetPortal = DialogPrimitive.Portal;
 
-// Lighter overlay + slightly stronger blur — keeps the page recognizable as
-// context behind the drawer instead of fading it to a muddy dim.
+// Warm scrim using the foreground token — keeps the canvas context
+// recognizable behind the drawer instead of fading to a cool slate dim.
 export const SheetOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
@@ -20,7 +20,7 @@ export const SheetOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-50 bg-slate-950/30 backdrop-blur-[3px]",
+      "fixed inset-0 z-50 bg-foreground/30 backdrop-blur-[3px]",
       "data-[state=open]:animate-in data-[state=closed]:animate-out",
       "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className,
@@ -39,10 +39,9 @@ export const SheetContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        // Modest max-width and the new overlay shadow — modern drawers feel
-        // like sheets, not slabs.
+        // Soft Modern: rounded edge on the leading corner, modal shadow.
         "fixed inset-y-0 right-0 z-50 flex h-full w-full max-w-md flex-col gap-5",
-        "overflow-y-auto border-l bg-card p-6 shadow-overlay outline-none",
+        "overflow-y-auto border-l bg-card p-6 shadow-modal outline-none",
         "data-[state=closed]:animate-out data-[state=open]:animate-in",
         "data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
         className,

@@ -11,7 +11,9 @@ import {
 import { KanbanCard } from "@/components/kanban/KanbanCard";
 import { KanbanColumn } from "@/components/kanban/KanbanColumn";
 import { KanbanFilters } from "@/components/kanban/KanbanFilters";
+import { KanbanBoardScroll } from "@/components/kanban/KanbanBoardScroll";
 import { CardDetailSheet } from "@/components/kanban/CardDetailSheet";
+import { Button } from "@/components/ui/button";
 import {
   useCards,
   useKanbanRealtime,
@@ -22,6 +24,21 @@ import {
   type CardFilters,
 } from "@/hooks/useKanban";
 import type { CardListItem } from "@/lib/types";
+
+const LOST_REASON_OPTIONS = [
+  "Adashib tushdi",
+  "Qimmatlik qildi",
+  "Aloqa bo'lmadi",
+  "Raqobatchini tanladi",
+  "Hozir kerak emas",
+  "Hudud/filial noqulay",
+  "Boshqa sabab",
+] as const;
+
+interface PendingLostMove {
+  card: CardListItem;
+  stageId: string;
+}
 
 export function KanbanPage(): JSX.Element {
   const { data: pipelines = [], isLoading: pipelinesLoading } = usePipelines();
@@ -49,6 +66,7 @@ export function KanbanPage(): JSX.Element {
   const { data: cardsPage } = useCards(filters);
   const moveCard = useMoveCard();
   const [openCardId, setOpenCardId] = useState<string | null>(null);
+  const [pendingLostMove, setPendingLostMove] = useState<PendingLostMove | null>(null);
   // Set while a drag is in progress so the post-drop click doesn't pop the
   // detail sheet open.
   const justDraggedRef = useRef(false);
@@ -82,9 +100,14 @@ export function KanbanPage(): JSX.Element {
     const { active, over } = event;
     if (!over) return;
     const card = active.data.current?.card as CardListItem | undefined;
-    const stageId = over.id as string;
-    if (!card) return;
+    const stageId = over.data.current?.type === "stage" ? String(over.id) : null;
+    if (!card || !stageId) return;
     if (card.stageId === stageId) return;
+    const targetStage = pipeline?.stages.find((stage) => stage.id === stageId);
+    if (targetStage?.type === "LOST") {
+      setPendingLostMove({ card, stageId });
+      return;
+    }
     moveCard.mutate({ cardId: card.id, stageId });
   }
 
@@ -121,10 +144,11 @@ export function KanbanPage(): JSX.Element {
           the total card count next to the title for quick orientation. */}
       <div className="flex items-baseline justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tightish text-foreground">
+          <p className="eyebrow mb-1">Ish jarayoni</p>
+          <h1 className="font-display text-3xl font-semibold tracking-tightish text-foreground">
             {pipeline?.name ?? "Kanban"}
           </h1>
-          <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
+          <p className="mt-1 font-mono text-xs text-muted-foreground">
             {totalCards} ta karta
           </p>
         </div>
@@ -144,10 +168,10 @@ export function KanbanPage(): JSX.Element {
         onDragEnd={onDragEnd}
         onDragCancel={onDragCancel}
       >
-        {/* Horizontal scroll container — subtle gradient mask edges so the
-            user feels the column rail can scroll without a visible scrollbar
-            at rest. */}
-        <div className="flex gap-3 overflow-x-auto pb-4 -mx-2 px-2 [scrollbar-gutter:stable]">
+        {/* Horizontal scroll container with edge fades, chevron buttons,
+            shift-wheel + scroll-snap. KanbanBoardScroll owns the wrapper so
+            this page just emits the columns. */}
+        <KanbanBoardScroll>
           {pipeline?.stages.map((stage) => (
             <KanbanColumn
               key={stage.id}
@@ -157,7 +181,7 @@ export function KanbanPage(): JSX.Element {
               activeCardId={activeCard?.id ?? null}
             />
           ))}
-        </div>
+        </KanbanBoardScroll>
 
         {/* DragOverlay — portaled clone of the active card. Rendered
             outside any column so it can never be clipped by a column's
@@ -172,7 +196,100 @@ export function KanbanPage(): JSX.Element {
         </DragOverlay>
       </DndContext>
 
+      <LostReasonDialog
+        pending={pendingLostMove}
+        saving={moveCard.isPending}
+        onCancel={() => setPendingLostMove(null)}
+        onConfirm={(lostReason) => {
+          if (!pendingLostMove) return;
+          moveCard.mutate(
+            {
+              cardId: pendingLostMove.card.id,
+              stageId: pendingLostMove.stageId,
+              lostReason,
+            },
+            { onSuccess: () => setPendingLostMove(null) },
+          );
+        }}
+      />
+
       <CardDetailSheet cardId={openCardId} onClose={() => setOpenCardId(null)} />
+    </div>
+  );
+}
+
+function LostReasonDialog({
+  pending,
+  saving,
+  onCancel,
+  onConfirm,
+}: {
+  pending: PendingLostMove | null;
+  saving: boolean;
+  onCancel: () => void;
+  onConfirm: (reason: string) => void;
+}): JSX.Element | null {
+  const [selected, setSelected] = useState<string>(LOST_REASON_OPTIONS[0]);
+  const [custom, setCustom] = useState("");
+
+  useEffect(() => {
+    if (pending) {
+      setSelected(LOST_REASON_OPTIONS[0]);
+      setCustom("");
+    }
+  }, [pending]);
+
+  if (!pending) return null;
+  const reason = selected === "Boshqa sabab" ? custom.trim() : selected;
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-foreground/40 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-lg border bg-card p-5 shadow-overlay">
+        <div className="mb-4">
+          <p className="eyebrow mb-1">Karta harakati</p>
+          <h2 className="font-display text-lg font-semibold tracking-tightish text-foreground">
+            Yo'qotish sababini tanlang
+          </h2>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            <strong className="text-foreground">{pending.card.title}</strong> kartasi Yo'qotildi bosqichiga o'tkaziladi.
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          {LOST_REASON_OPTIONS.map((option) => (
+            <label
+              key={option}
+              className="flex cursor-pointer items-center gap-2.5 rounded-md border bg-background px-3 py-2 text-sm transition-colors hover:bg-surface"
+            >
+              <input
+                type="radio"
+                name="lost-reason"
+                value={option}
+                checked={selected === option}
+                onChange={() => setSelected(option)}
+              />
+              <span>{option}</span>
+            </label>
+          ))}
+        </div>
+
+        {selected === "Boshqa sabab" && (
+          <textarea
+            value={custom}
+            onChange={(event) => setCustom(event.target.value)}
+            placeholder="Sababni yozing..."
+            className="mt-3 min-h-20 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+          />
+        )}
+
+        <div className="mt-4 flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onCancel} disabled={saving}>
+            Bekor qilish
+          </Button>
+          <Button type="button" onClick={() => onConfirm(reason)} disabled={saving || !reason}>
+            {saving ? "Saqlanmoqda..." : "Yo'qotildi qilish"}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
